@@ -1,0 +1,10 @@
+faster-whisper
+numpy
+pydantic
+pydub
+requests
+python-dotenv
+google-adk>=2.3.0
+moviepy
+edge-tts
+deep-translator

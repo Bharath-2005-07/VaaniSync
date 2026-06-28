@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.pytest_cache/
+.ruff_cache/
+.adk/
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Local configuration
+.env
+
+# Project specific temporary and output folders
+audio/
+transcripts/
+output/video2.mp4
+
+# Temp test files
+ollama_basic.txt
+ollama_onebyone_response.txt
+ollama_response.txt
+ollama_template.txt
+.agents/scratch_test_*.py
+.agents/ollama_*.txt

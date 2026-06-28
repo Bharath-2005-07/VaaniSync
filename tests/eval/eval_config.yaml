@@ -1,0 +1,8 @@
+# eval/eval_config.yaml
+# agents-cli eval configuration for video-localizer
+eval_config_version: "1"
+metrics:
+  - name: tool_trajectory_avg_score
+    threshold: 0.8
+  - name: response_match_score
+    threshold: 0.7

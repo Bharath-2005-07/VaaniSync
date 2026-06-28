@@ -1,0 +1,15 @@
+[
+  {
+    "name": "dub_video1_to_kannada",
+    "query": "Dub video1.mp4 into Kannada",
+    "expected_tool_use": [
+      {"tool_name": "parse_input"},
+      {"tool_name": "extract_audio"},
+      {"tool_name": "transcribe_audio"},
+      {"tool_name": "translate_segments"},
+      {"tool_name": "synthesise_segments"},
+      {"tool_name": "mux_video"}
+    ],
+    "reference": "The video has been dubbed into Kannada and saved to output/localized_video.mp4"
+  }
+]

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "video-localizer"
+version = "0.1.0"
+description = "AI video dubbing agent — translates video audio to Kannada using ADK, faster-whisper, Ollama, and MeloTTS"
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk>=2.3.0",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+# Heavy pipeline deps — install separately; not needed for lint/tests
+pipeline = [
+    "faster-whisper>=1.0.0",
+    "pydub>=0.25.1",
+    "moviepy>=1.0.3",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+]
+lint = [
+    "ruff>=0.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["video_localizer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]   # line length handled separately
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
