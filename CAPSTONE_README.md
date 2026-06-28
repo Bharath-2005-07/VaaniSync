@@ -46,6 +46,13 @@ flowchart TD
     style END fill:#f0fdf4,stroke:#22c55e,stroke-width:2px
 ```
 
+### 📸 Live Pipeline Execution (ADK Dev UI)
+Below is a screenshot of the VaaniSync multi-agent dubbing workflow executing live inside the Google ADK Developer Web UI:
+
+![VaaniSync Live Web UI Execution](information/pipeline_run.png)
+
+---
+
 ### Type-Safe Data Contracts (Pydantic)
 Each edge in our workflow graph is strictly validated to ensure data integrity across stages:
 * **`PipelineInput`**: Validates input video path, target language, and requested voice gender.
@@ -60,7 +67,7 @@ Each edge in our workflow graph is strictly validated to ensure data integrity a
 ## 🌟 Key Capstone Implementations & Course Concepts
 
 ### 1. Multi-Agent Design & Workflow Graph
-The orchestration is built using `google.adk.workflow.Workflow` in [video_localizer/agent.py](file:///c:/Users/bhara/Desktop/Antigravity/lang-to-lang/video_localizer/agent.py). It registers multiple function nodes with discrete responsibilities and custom `RetryConfig` policies to handle transient hardware hiccups (e.g., CPU memory peaks during transcription).
+The orchestration is built using `google.adk.workflow.Workflow` in [video_localizer/agent.py]. It registers multiple function nodes with discrete responsibilities and custom `RetryConfig` policies to handle transient hardware hiccups (e.g., CPU memory peaks during transcription).
 
 ### 2. Smart Pacing & Dynamic Time-Stretching
 To prevent dubbed speech from running out of sync:
@@ -132,7 +139,7 @@ ruff check video_localizer/ tests/
 ## 🎬 How to Run
 
 ### Option A: Drag-and-Drop Launcher (Windows)
-We provided an interactive batch script [run_dubbing.bat](file:///c:/Users/bhara/Desktop/Antigravity/lang-to-lang/run_dubbing.bat):
+We provided an interactive batch script [run_dubbing.bat](run_dubbing.bat):
 1. Simply drag any video file from your file explorer and drop it onto `run_dubbing.bat`.
 2. The script activates the virtual environment and kicks off the ADK pipeline.
 
@@ -175,14 +182,14 @@ VaaniSync is designed with a **privacy-first, local-first** architecture:
 To adapt VaaniSync for any other local language (e.g. Hindi, Spanish, Tamil, Telugu), follow this simple setup mapping guide:
 
 ### 1. Configure Translation Target
-In [video_localizer/agent.py](file:///c:/Users/bhara/Desktop/Antigravity/lang-to-lang/video_localizer/agent.py#L95-L117), modify the target code inside `_translate_batch`:
+In [video_localizer/agent.py], modify the target code inside `_translate_batch`:
 ```python
 # Change "kn" to "hi" (Hindi), "te" (Telugu), "es" (Spanish), etc.
 translator = GoogleTranslator(source="auto", target="hi")
 ```
 
 ### 2. Configure TTS Voices
-In [video_localizer/agent.py](file:///c:/Users/bhara/Desktop/Antigravity/lang-to-lang/video_localizer/agent.py#L407-L508), map the target language codes to supported voices in `edge-tts` and `MeloTTS`:
+In [video_localizer/agent.py](video_localizer/agent.py#L407-L508), map the target language codes to supported voices in `edge-tts` and `MeloTTS`:
 * **Hindi (hi)**:
   * Edge Female: `hi-IN-SwararaNeural` | Edge Male: `hi-IN-MadhurNeural`
 * **Telugu (te)**:
@@ -200,7 +207,7 @@ melo_tts = TTS(language="HI", device="cpu")
 ```
 
 ### 3. Update default arguments
-Update the default properties in [PipelineInput](file:///c:/Users/bhara/Desktop/Antigravity/lang-to-lang/video_localizer/agent.py#L34-L40):
+Update the default properties in [PipelineInput](video_localizer/agent.py#L34-L40):
 ```python
 class PipelineInput(BaseModel):
     video_path: str = "video/video1.mp4"
