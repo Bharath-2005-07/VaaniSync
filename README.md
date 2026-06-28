@@ -223,3 +223,18 @@ class PipelineInput(BaseModel):
 * **Speaker Diarization**: Integrate a local speaker identification model (such as `pyannote.audio`) to isolate different speaker voices in a single video, applying distinct gendered/styled TTS voices to matching speakers.
 * **Interactive UI controls**: Build an advanced frontend settings pane within the ADK Web interface to allow users to upload videos, select target languages, toggle voice profiles, and export subtitles on the fly.
 * **Auto-Subtitling (SRT/VTT)**: Dynamically generate and burn subtitles into the final muxed video output alongside the audio track.
+
+---
+
+## ⚠️ Known Limitations & Scale Analysis
+
+While VaaniSync runs beautifully for short to medium-length videos (up to 10–15 minutes), there are physical scaling bottlenecks to consider for longer files:
+
+* **API Rate Limiting (Google Translate)**: The translation stage uses the `deep-translator` library which wraps the Google Translate web translation endpoint. Because it makes sequential HTTP requests for each transcription segment, a very long video with hundreds of lines can trigger **HTTP 429 (Too Many Requests)** from Google.
+* **Sequential CPU Synthesis**: Text-to-speech generation via local `MeloTTS` on CPU is resource-intensive. Processing a feature-length video segment-by-segment can take significant time since it is executed sequentially.
+* **Context Window Limits**: When using a local LLM via Ollama for batch translation, very large subtitle files can exceed the model's active context window (e.g., 8,192 tokens), causing the LLM to return incomplete text.
+
+### How to Scale this Pipeline:
+1. **Parallelized Synthesis**: Run the TTS generation stage using a python `ThreadPoolExecutor` or `asyncio.gather()` to synthesize multiple segments simultaneously.
+2. **Text Batching**: Merge adjacent subtitles with delimiter characters (e.g., `|`) so that multiple segments are sent in a single translation request, reducing API calls by 90%.
+3. **Video Chunking**: Split long inputs into 5-minute video chunks, process them concurrently, and assemble the final segments using FFmpeg concatenation.
