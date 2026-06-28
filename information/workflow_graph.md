@@ -31,34 +31,54 @@ flowchart TD
 
 ```text
 lang-to-lang/
-├── information/
-│   └── workflow_graph.md         # This pipeline flowchart & documentation
-├── skill/
-│   └── SKILL.md                  # Custom ADK agent skill definition
-├── video/
-│   └── video1.mp4                # Input video (default placeholder)
-├── audio/
-│   ├── original_audio.wav        # Stage 1: Extracted original audio
-│   ├── dubbed_segments/          # Stage 4: Individual translated speech WAV files
+├── .agents/
+│   └── skills/
+│       └── video-localizer/
+│           └── SKILL.md          # Custom agent skill definition file
+├── .venv/                        # Local Python virtual environment
+├── audio/                        # Temporary processing directory for audio
+│   ├── original_audio.wav        # Stage 1: Extracted and denoised original audio
+│   ├── dubbed_segments/          # Stage 4: Concurrent segment TTS outputs
 │   └── dubbed_full.wav           # Stage 5: Assembled dubbed audio track
-├── transcripts/
-│   ├── segments.json             # Stage 2: Whisper transcription segments
-│   └── translated_segments.json  # Stage 3: Kannada translated text and metadata
-├── output/
-│   └── [input_filename].mp4      # Stage 5: Final Kannada dubbed video output
-├── video_localizer/
-│   ├── __init__.py
-│   ├── agent.py                  # Main ADK workflow definition & node handlers
-│   └── agents/
-│       ├── __init__.py
-│       └── translation.py        # Independent translation agent module
-├── tests/
-│   ├── test_pipeline.py          # Pytest automation suite
-│   └── eval/
+├── checkpoints_v2/               # OpenVoice V2 converter model weights folder
+│   └── converter/
+│       ├── checkpoint.pth        # Converter PyTorch weights
+│       └── config.json           # Converter configuration parameters
+├── information/                  # Project documentation assets
+│   ├── pipeline_run.png          # Web UI execution screenshot
+│   └── workflow_graph.md         # Pipeline flowchart and architecture
+├── inputs/                       # User-supplied media input files
+├── output/                       # Final dubbed Kannada video output files
+│   └── virat_kohli.mp4           # Stage 5: Dubbed output multiplexed video
+├── processed/                    # Speaker embedding cache created by OpenVoice
+├── processing/                   # Temporary cache directory for processing
+├── skill/
+│   └── SKILL.md                  # Reusable skill documentation
+├── tests/                        # Automated unit and integration tests
+│   ├── test_pipeline.py          # Pytest suite with mocked services
+│   └── eval/                     # Evaluation configurations and datasets
 │       ├── eval_config.yaml
 │       └── eval_dataset.json
-├── requirements.txt              # Pipeline Python dependencies
-└── run_dubbing.bat               # Interactive drag-and-drop batch script
+├── transcripts/                  # Temporary translation segments storage
+│   ├── segments.json             # Stage 2: Whisper speech timestamps & text
+│   └── translated_segments.json  # Stage 3: Kannada translation with metadata
+├── video/                        # Input video files directory
+│   ├── video2.mp4                # Secondary testing video input
+│   ├── video3.mp4                # Tertiary testing video input
+│   └── virat_kohli.mp4           # Reference test video input
+├── video_localizer/              # Main agent workflow package
+│   ├── __init__.py               # Exports discovery root agent workflow
+│   ├── agent.py                  # Orchestrator & FunctionNode stage handlers
+│   └── agents/                   # Sub-agent modules (e.g., translation)
+│       ├── __init__.py
+│       └── translation.py
+├── agents-cli-manifest.yaml      # ADK project registration manifest
+├── pyproject.toml                # Build configuration and dependency specifications
+├── requirements.txt              # Primary project pip packages list
+├── run_dubbing.bat               # Interactive drag-and-drop batch script
+├── run_guide.md                  # Quick run commands cheat sheet
+├── CAPSTONE_README.md            # Kaggle Capstone documentation README
+└── README.md                     # Project homepage GitHub README
 ```
 
 ---

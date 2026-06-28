@@ -20,7 +20,13 @@ env/
 # Project specific temporary and output folders
 audio/
 transcripts/
-output/video2.mp4
+output/
+processing/
+processed/
+inputs/
+checkpoints_v2/
+video/video2.mp4
+video/video3.mp4
 
 # Temp test files
 ollama_basic.txt

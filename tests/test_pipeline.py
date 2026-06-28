@@ -5,9 +5,12 @@ No real files or network calls are made.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+os.environ.setdefault("PATH", "")
 
 # Ensure project root is on path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -169,7 +172,7 @@ def test_detect_gender_heuristics():
 
 @patch("deep_translator.GoogleTranslator.translate")
 def test_translate_batch_google(mock_translate):
-    mock_translate.side_effect = ["ಕನ್ನಡ 1", "ಕನ್ನಡ 2"]
+    mock_translate.return_value = "ಕನ್ನಡ 1 ||| ಕನ್ನಡ 2"
 
     segs = [{"text": "Hello 1"}, {"text": "Hello 2"}]
     res = _translate_batch(segs)
@@ -214,8 +217,15 @@ def test_translate_segments(mock_translate_batch, mock_write, mock_read):
         detected_language="en",
     )
 
-    with patch.dict("os.environ", {"GOOGLE_API_KEY": "fake-api-key"}):
+    old_key = os.environ.get("GOOGLE_API_KEY")
+    os.environ["GOOGLE_API_KEY"] = "fake-api-key"
+    try:
         events = _collect_events(translate_segments(ctx, inp))
+    finally:
+        if old_key is None:
+            del os.environ["GOOGLE_API_KEY"]
+        else:
+            os.environ["GOOGLE_API_KEY"] = old_key
 
     assert len(events) == 2
     output = events[-1].output
@@ -247,7 +257,9 @@ def test_pad_or_trim_speedup(mock_from_wav, mock_change_speed):
 @patch("video_localizer.agent.Path.read_text")
 @patch("video_localizer.agent._pad_or_trim")
 @patch("os.path.exists")
-def test_synthesise_segments_edge_tts(mock_exists, mock_pad_or_trim, mock_read):
+@patch("pydub.AudioSegment.from_mp3")
+@patch("pydub.AudioSegment.silent")
+def test_synthesise_segments_edge_tts(mock_silent, mock_from_mp3, mock_exists, mock_pad_or_trim, mock_read):
     mock_read.return_value = json.dumps([
         {"start": 0.0, "end": 2.0, "text": "ಕನ್ನಡ 1", "gender": "female"},
         {"start": 2.0, "end": 4.0, "text": "ಕನ್ನಡ 2", "gender": "male"}
@@ -265,6 +277,7 @@ def test_synthesise_segments_edge_tts(mock_exists, mock_pad_or_trim, mock_read):
         output = events[-1].output
         assert isinstance(output, SynthesisResult)
         assert output.segment_count == 2
+        # asyncio.run is called within ThreadPoolExecutor workers
         assert mock_async_run.call_count == 2
 
 

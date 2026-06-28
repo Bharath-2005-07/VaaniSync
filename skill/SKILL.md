@@ -80,13 +80,14 @@ You must implement a 5-stage pipeline using Python, keeping execution isolated t
   - Use `pydub` to trim or pad each segment WAV to fit exactly within `[start, end]` duration window.
   - If segment audio is shorter than window → append silence padding.
   - If segment audio is longer than window → apply `pydub` speed-up (1.1x–1.3x) before padding.
-- **Language code:** `KN` (Kannada) for MeloTTS
-- **Sample usage:**
+- **TTS Engine & Voice Cloning Strategy**: Since MeloTTS does not natively support Kannada (`KN`), the system dynamically falls back to `edge-tts` to synthesize high-quality base Kannada speech. Then, `OpenVoice V2` extracts a speaker embedding from the original audio and converts the base speech to clone the original speaker's voice offline on CPU.
+- **Sample Cloning Usage:**
   ```python
-  from melo.api import TTS
-  model = TTS(language="KN", device="cpu")
-  speaker_ids = model.hps.data.spk2id
-  model.tts_to_file(text, speaker_ids["KN"], output_path, speed=1.0)
+  from openvoice.api import ToneColorConverter
+  converter = ToneColorConverter('config.json', device='cpu')
+  converter.load_ckpt('checkpoint.pth')
+  # Extract source and target speaker embeddings, then convert
+  converter.convert(audio_src_path, src_se, tgt_se, output_path)
   ```
 
 ### Stage 5 — Muxing (Final Assembly)
@@ -104,25 +105,56 @@ You must implement a 5-stage pipeline using Python, keeping execution isolated t
 ---
 
 ## Directory Structure
-```
+```text
 lang-to-lang/
+├── .agents/
+│   └── skills/
+│       └── video-localizer/
+│           └── SKILL.md          # Custom agent skill definition file
+├── .venv/                        # Local Python virtual environment
+├── audio/                        # Temporary processing directory for audio
+│   ├── original_audio.wav        # Stage 1: Extracted and denoised original audio
+│   ├── dubbed_segments/          # Stage 4: Concurrent segment TTS outputs
+│   └── dubbed_full.wav           # Stage 5: Assembled dubbed audio track
+├── checkpoints_v2/               # OpenVoice V2 converter model weights folder
+│   └── converter/
+│       ├── checkpoint.pth        # Converter PyTorch weights
+│       └── config.json           # Converter configuration parameters
+├── information/                  # Project documentation assets
+│   ├── pipeline_run.png          # Web UI execution screenshot
+│   └── workflow_graph.md         # Pipeline flowchart and architecture
+├── inputs/                       # User-supplied media input files
+├── output/                       # Final dubbed Kannada video output files
+│   └── virat_kohli.mp4           # Stage 5: Dubbed output multiplexed video
+├── processed/                    # Speaker embedding cache created by OpenVoice
+├── processing/                   # Temporary cache directory for processing
 ├── skill/
-│   └── SKILL.md              ← This file
-├── video/
-│   └── video1.mp4            ← Input video
-├── audio/
-│   ├── original_audio.wav    ← Extracted audio
-│   ├── dubbed_segments/      ← Per-segment TTS output
-│   └── dubbed_full.wav       ← Final assembled audio
-├── transcripts/
-│   ├── segments.json         ← Whisper output
-│   └── translated_segments.json ← LLM-translated output
-├── output/
-│   └── localized_video.mp4   ← Final dubbed video
-├── video_localizer/
-│   └── agent.py              ← ADK agent entry point
-├── .venv/                    ← Local Python venv (google-adk installed)
-└── agents-cli-manifest.yaml  ← ADK project manifest
+│   └── SKILL.md                  # Reusable skill documentation
+├── tests/                        # Automated unit and integration tests
+│   ├── test_pipeline.py          # Pytest suite with mocked services
+│   └── eval/                     # Evaluation configurations and datasets
+│       ├── eval_config.yaml
+│       └── eval_dataset.json
+├── transcripts/                  # Temporary translation segments storage
+│   ├── segments.json             # Stage 2: Whisper speech timestamps & text
+│   └── translated_segments.json  # Stage 3: Kannada translation with metadata
+├── video/                        # Input video files directory
+│   ├── video2.mp4                # Secondary testing video input
+│   ├── video3.mp4                # Tertiary testing video input
+│   └── virat_kohli.mp4           # Reference test video input
+├── video_localizer/              # Main agent workflow package
+│   ├── __init__.py               # Exports discovery root agent workflow
+│   ├── agent.py                  # Orchestrator & FunctionNode stage handlers
+│   └── agents/                   # Sub-agent modules (e.g., translation)
+│       ├── __init__.py
+│       └── translation.py
+├── agents-cli-manifest.yaml      # ADK project registration manifest
+├── pyproject.toml                # Build configuration and dependency specifications
+├── requirements.txt              # Primary project pip packages list
+├── run_dubbing.bat               # Interactive drag-and-drop batch script
+├── run_guide.md                  # Quick run commands cheat sheet
+├── CAPSTONE_README.md            # Kaggle Capstone documentation README
+└── README.md                     # Project homepage GitHub README
 ```
 
 ---

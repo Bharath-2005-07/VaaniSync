@@ -14,6 +14,7 @@ from google.adk.tools import FunctionTool
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "gemma2:2b"
 
+
 def _translate_batch(batch_segments: list[dict], model: str = DEFAULT_MODEL) -> list[dict]:
     """Translate a batch of segments together using local Ollama."""
     input_data = [{"id": i + 1, "text": seg["text"]} for i, seg in enumerate(batch_segments)]
@@ -57,7 +58,7 @@ def _translate_batch(batch_segments: list[dict], model: str = DEFAULT_MODEL) -> 
         start_idx = val.find("[")
         end_idx = val.rfind("]")
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            val = val[start_idx:end_idx + 1]
+            val = val[start_idx : end_idx + 1]
 
         parsed = json.loads(val)
         if isinstance(parsed, list):
@@ -71,6 +72,7 @@ def _translate_batch(batch_segments: list[dict], model: str = DEFAULT_MODEL) -> 
     # Return input data as fallback
     return input_data
 
+
 def check_ollama_connection(model: str = DEFAULT_MODEL) -> dict:
     """Verify Ollama is running and the specified model is available."""
     try:
@@ -82,6 +84,7 @@ def check_ollama_connection(model: str = DEFAULT_MODEL) -> dict:
     except Exception:
         pass
     return {"running": False, "model": model, "available": False}
+
 
 def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
     """Translate segments from file into Kannada and write translated_segments.json."""
@@ -105,21 +108,25 @@ def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
 
         for i, seg in enumerate(segments):
             kannada = translation_map.get(i + 1, seg["text"])
-            translated.append({
-                "start": seg["start"],
-                "end": seg["end"],
-                "original_text": seg["text"],
-                "text": kannada,
-            })
+            translated.append(
+                {
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "original_text": seg["text"],
+                    "text": kannada,
+                }
+            )
     except Exception as e:
         errors.append(str(e))
         for seg in segments:
-            translated.append({
-                "start": seg["start"],
-                "end": seg["end"],
-                "original_text": seg["text"],
-                "text": seg["text"],
-            })
+            translated.append(
+                {
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "original_text": seg["text"],
+                    "text": seg["text"],
+                }
+            )
 
     output_dir = Path("transcripts")
     output_dir.mkdir(exist_ok=True)
@@ -133,6 +140,7 @@ def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
         "translation_errors": errors,
         "error": None,
     }
+
 
 # ADK Agent definition
 translation_agent = Agent(

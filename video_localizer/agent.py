@@ -91,27 +91,71 @@ def _detect_gender_heuristics(segments: list[dict]) -> list[str]:
     return genders
 
 
-
 def _translate_batch(batch_segments: list[dict], model: str = "gemma2:2b") -> list[dict]:
-    """Translate a batch of segments using GoogleTranslator."""
+    """Translate a batch of segments using GoogleTranslator with delimiter batching."""
     from deep_translator import GoogleTranslator
 
     translator = GoogleTranslator(source="auto", target="kn")
     translated_data = []
 
-    for i, seg in enumerate(batch_segments):
+    # Filter out empty texts but keep track of indices
+    texts_to_translate = []
+    indices = []
+    for idx, seg in enumerate(batch_segments):
         text = seg.get("text", "")
-        if not text.strip():
-            translated_data.append({"id": i + 1, "text": ""})
-            continue
+        if text.strip():
+            texts_to_translate.append(text)
+            indices.append(idx)
 
-        try:
-            translated_text = translator.translate(text)
-            translated_data.append({"id": i + 1, "text": translated_text})
-        except Exception as e:
-            print(f"Translation failed for segment {i}: {e}")
-            # Fallback to original text
-            translated_data.append({"id": i + 1, "text": text})
+    if not texts_to_translate:
+        # All segments are empty
+        for i, seg in enumerate(batch_segments):
+            translated_data.append({"id": i + 1, "text": ""})
+        return translated_data
+
+    # Use a custom separator token
+    separator = " ||| "
+    combined_text = separator.join(texts_to_translate)
+
+    translated_combined = ""
+    success = False
+    try:
+        translated_combined = translator.translate(combined_text)
+        # Use regex to split on ||| allowing for minor spacing modifications from the translator
+        parts = re.split(r"\s*\|\|\|\s*", translated_combined.strip())
+        if len(parts) == len(texts_to_translate):
+            success = True
+        else:
+            print(
+                f"Batch translation returned {len(parts)} parts, expected {len(texts_to_translate)}. Falling back to individual translation."
+            )
+    except Exception as e:
+        print(f"Batch translation failed: {e}. Falling back to individual translation.")
+
+    if success:
+        # Map back to original segments
+        translated_texts = [""] * len(batch_segments)
+        for p_idx, part in enumerate(parts):
+            orig_idx = indices[p_idx]
+            translated_texts[orig_idx] = part.strip()
+
+        for i, seg in enumerate(batch_segments):
+            translated_data.append(
+                {"id": i + 1, "text": translated_texts[i] or seg.get("text", "")}
+            )
+    else:
+        # Fallback: Translate individually
+        for i, seg in enumerate(batch_segments):
+            text = seg.get("text", "")
+            if not text.strip():
+                translated_data.append({"id": i + 1, "text": ""})
+                continue
+            try:
+                translated_text = translator.translate(text)
+                translated_data.append({"id": i + 1, "text": translated_text})
+            except Exception as e:
+                print(f"Fallback translation failed for segment {i}: {e}")
+                translated_data.append({"id": i + 1, "text": text})
 
     return translated_data
 
@@ -139,7 +183,8 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
 
         # Dynamically extract mp4 file name if present in query
         import re
-        match = re.search(r'([\w\-\./]+\.mp4)', node_input)
+
+        match = re.search(r"([\w\-\./]+\.mp4)", node_input)
         if match:
             video_path = match.group(1)
 
@@ -190,13 +235,20 @@ def extract_audio(ctx: Context, node_input: PipelineInput) -> ExtractionResult:
     audio_path = "audio/original_audio.wav"
 
     cmd = [
-        "ffmpeg", "-y", "-i", video_path,
+        "ffmpeg",
+        "-y",
+        "-i",
+        video_path,
         "-vn",
-        "-acodec", "pcm_s16le",
-        "-ar", "16000",
-        "-ac", "1",
-        "-af", "afftdn",
-        audio_path
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+        "-af",
+        "afftdn",
+        audio_path,
     ]
     subprocess.run(cmd, check=True)
 
@@ -235,11 +287,9 @@ def transcribe_audio(ctx: Context, node_input: ExtractionResult) -> Transcriptio
 
     segments = []
     for s in segments_iter:
-        segments.append({
-            "start": round(s.start, 3),
-            "end": round(s.end, 3),
-            "text": s.text.strip()
-        })
+        segments.append(
+            {"start": round(s.start, 3), "end": round(s.end, 3), "text": s.text.strip()}
+        )
 
     Path(output_json).write_text(
         json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -306,13 +356,15 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
     translated = []
     for i, seg in enumerate(segments):
         kannada = translation_map.get(i + 1, seg["text"])
-        translated.append({
-            "start": seg["start"],
-            "end": seg["end"],
-            "original_text": seg["text"],
-            "text": kannada,
-            "gender": genders[i],
-        })
+        translated.append(
+            {
+                "start": seg["start"],
+                "end": seg["end"],
+                "original_text": seg["text"],
+                "text": kannada,
+                "gender": genders[i],
+            }
+        )
 
     os.makedirs("transcripts", exist_ok=True)
     output_json = "transcripts/translated_segments.json"
@@ -352,11 +404,7 @@ def _change_speed_ffmpeg(audio_path: str, speed: float) -> None:
     filter_str = ",".join(filters)
 
     temp_path = audio_path + ".speed.wav"
-    cmd = [
-        "ffmpeg", "-y", "-i", audio_path,
-        "-filter:a", filter_str,
-        temp_path
-    ]
+    cmd = ["ffmpeg", "-y", "-i", audio_path, "-filter:a", filter_str, temp_path]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         if os.path.exists(temp_path):
@@ -403,7 +451,11 @@ def _pad_or_trim(audio_path: str, target_ms: int) -> None:
 def synthesise_segments(ctx: Context, node_input: TranslationResult) -> SynthesisResult:
     """Synthesise Kannada speech for each translated text segment and pad/trim to match duration."""
     import os
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
+
+    from pydub import AudioSegment
 
     segments_path = node_input.segments_path
     segments = json.loads(Path(segments_path).read_text(encoding="utf-8"))
@@ -413,68 +465,100 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
 
     # Try loading MeloTTS
     melo_tts = None
+    melo_spk = None
     try:
         from melo.api import TTS
+
         melo_tts = TTS(language="KN", device="cpu")
         speaker_ids = melo_tts.hps.data.spk2id
         melo_spk = speaker_ids["KN"]
     except Exception as e:
         print("MeloTTS load error:", e)
 
+    # Try loading OpenVoice V2 Converter
+    tone_color_converter = None
+    target_se = None
+    device = "cpu"
+    checkpoint_dir = os.path.join(os.getcwd(), "checkpoints_v2")
+    converter_dir = os.path.join(checkpoint_dir, "converter")
+
+    if os.path.exists(converter_dir):
+        try:
+            from openvoice import se_extractor
+            from openvoice.api import ToneColorConverter
+
+            tone_color_converter = ToneColorConverter(
+                os.path.join(converter_dir, "config.json"), device=device
+            )
+            tone_color_converter.load_ckpt(os.path.join(converter_dir, "checkpoint.pth"))
+
+            original_audio_path = "audio/original_audio.wav"
+            if os.path.exists(original_audio_path):
+                target_se, _ = se_extractor.get_se(
+                    original_audio_path, tone_color_converter, vad=True
+                )
+                print(
+                    "OpenVoice V2: Successfully loaded converter and extracted target speaker embedding."
+                )
+            else:
+                print("OpenVoice V2: Original audio file not found, skipping voice cloning.")
+                tone_color_converter = None
+        except Exception as e:
+            print(f"OpenVoice V2 load/extract failed: {e}")
+            tone_color_converter = None
+
     edge_voice_female = "kn-IN-SapnaNeural"
     edge_voice_male = "kn-IN-GaganNeural"
 
-    for i, seg in enumerate(segments):
+    melo_lock = threading.Lock()
+
+    def process_segment(i, seg):
         text = seg["text"]
         start = seg["start"]
         end = seg["end"]
         target_ms = int((end - start) * 1000)
         output_path = os.path.join(segments_dir, f"segment_{i:03d}.wav")
+        base_tts_path = output_path + ".base.wav"
 
         gender = seg.get("gender", "male")
         voice = edge_voice_male if gender == "male" else edge_voice_female
 
         success = False
+
+        # 1. MeloTTS generation
         if melo_tts and gender != "male":
             try:
                 char_len = len(text)
-                target_sec = (end - start)
+                target_sec = end - start
                 speed = 1.0
                 if target_sec > 0:
                     speed = max(0.5, min(2.0, char_len / (12.0 * target_sec)))
-                melo_tts.tts_to_file(text, melo_spk, output_path, speed=speed)
+
+                with melo_lock:
+                    melo_tts.tts_to_file(text, melo_spk, base_tts_path, speed=speed)
                 success = True
             except Exception as e:
                 print(f"MeloTTS synthesis failed for segment {i}: {e}")
 
+        # 2. edge-tts fallback if MeloTTS failed or was skipped
         if not success:
             try:
                 import asyncio
-                from threading import Thread
 
                 import edge_tts
 
                 temp_mp3 = output_path + ".mp3"
-                success_flag = [False]
 
-                def _run_tts():
-                    try:
-                        async def _tts():
-                            communicate = edge_tts.Communicate(text, voice)
-                            await communicate.save(temp_mp3)
-                        asyncio.run(_tts())
-                        success_flag[0] = True
-                    except Exception as e:
-                        print(f"edge-tts thread error for segment {i}: {e}")
+                async def _tts():
+                    communicate = edge_tts.Communicate(text, voice)
+                    await communicate.save(temp_mp3)
 
-                t = Thread(target=_run_tts)
-                t.start()
-                t.join()
+                # edge-tts is run inside asyncio
+                asyncio.run(_tts())
 
-                if success_flag[0] and os.path.exists(temp_mp3):
-                    from pydub import AudioSegment
+                if os.path.exists(temp_mp3):
                     sound = AudioSegment.from_mp3(temp_mp3)
-                    sound.export(output_path, format="wav")
+                    sound.export(base_tts_path, format="wav")
                     try:
                         os.remove(temp_mp3)
                     except Exception:
@@ -483,19 +567,56 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
             except Exception as e:
                 print(f"edge-tts synthesis failed for segment {i}: {e}")
 
+        # 3. OpenVoice V2 Tone Color Cloning if enabled
+        if success and tone_color_converter is not None and target_se is not None:
+            try:
+                with melo_lock:
+                    source_se_path = f"{base_tts_path}.se.pth"
+                    source_se = tone_color_converter.extract_se(
+                        ref_wav_list=base_tts_path, se_save_path=source_se_path
+                    )
+                    tone_color_converter.convert(
+                        audio_src_path=base_tts_path,
+                        src_se=source_se,
+                        tgt_se=target_se,
+                        output_path=output_path,
+                        message="@MyShell",
+                    )
+                if os.path.exists(base_tts_path):
+                    os.remove(base_tts_path)
+            except Exception as e:
+                print(
+                    f"OpenVoice V2 cloning failed for segment {i}: {e}. Falling back to base audio."
+                )
+                if os.path.exists(base_tts_path):
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                    os.rename(base_tts_path, output_path)
+        elif success and os.path.exists(base_tts_path):
+            # No cloning, rename base audio to final output
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            os.rename(base_tts_path, output_path)
+
+        # 4. Padding/Trimming to sync timing
         if success and os.path.exists(output_path):
             _pad_or_trim(output_path, target_ms)
         else:
-            from pydub import AudioSegment
+            # Silence fallback
             silence = AudioSegment.silent(duration=max(100, target_ms), frame_rate=16000)
             silence.export(output_path, format="wav")
+
+    # Run segments in parallel using ThreadPoolExecutor
+    num_workers = min(4, len(segments)) if segments else 1
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        executor.map(lambda item: process_segment(item[0], item[1]), enumerate(segments))
 
     yield Event(
         content=types.Content(
             role="model",
             parts=[
                 types.Part.from_text(
-                    text=f"Stage 4 — Synthesised {len(segments)} segments into {segments_dir}"
+                    text=f"Stage 4 — Synthesised {len(segments)} segments into {segments_dir} concurrently"
                 )
             ],
         )
@@ -544,13 +665,19 @@ def mux_video(ctx: Context, node_input: SynthesisResult) -> MuxResult:
     full_audio.export(dubbed_full_path, format="wav")
 
     cmd = [
-        "ffmpeg", "-y",
-        "-i", video_path,
-        "-i", dubbed_full_path,
-        "-c:v", "copy",
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        output_path
+        "ffmpeg",
+        "-y",
+        "-i",
+        video_path,
+        "-i",
+        dubbed_full_path,
+        "-c:v",
+        "copy",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        output_path,
     ]
     subprocess.run(cmd, check=True)
 

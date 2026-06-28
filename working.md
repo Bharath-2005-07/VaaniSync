@@ -75,18 +75,19 @@ flowchart TD
 * **Technology**: `deep-translator` (Google Translate web endpoint wrapper) with local Ollama (`gemma2:2b`) fallback.
 * **Under the hood**:
   * Scans segments for gender markers (e.g. pronouns like *he*, *she*, *him*, *her*) using a heuristic keyword filter to tag segments with gender metadata.
-  * Passes text segments through the translation engine with the target set to `"kn"` (Kannada).
+  * **Smart Delimiter Text Batching**: Packs multiple sequential subtitle segments into a single translation payload using a custom ` ||| ` separator token (e.g., `Segment 1 ||| Segment 2 ||| Segment 3`). This single string is sent to `deep-translator`, and the translated result is split back by ` ||| ` and mapped to the segment IDs. This reduces API requests by up to 90%, preventing HTTP 429 rate limit errors.
   * Writes the resulting map back to [transcripts/translated_segments.json](transcripts/translated_segments.json).
 
 ---
 
 ### Stage 4: SynthesisAgent
 * **Input**: [transcripts/translated_segments.json](transcripts/translated_segments.json)
-* **Operation**: Generates dubbed voice lines matching the original segment durations.
-* **Technology**: `edge-tts` (Microsoft Neural Voices) & local `MeloTTS` (CPU version).
+* **Operation**: Generates dubbed voice lines matching the original segment durations, clones voices, and parallelizes synthesis.
+* **Technology**: `edge-tts` (Microsoft Neural Voices), local `MeloTTS` (CPU version), and `OpenVoice V2` (Zero-Shot Cross-Lingual Voice Cloning).
 * **Under the hood**:
   * Checks segment gender tags to select either male (`kn-IN-GaganNeural`) or female (`kn-IN-SapnaNeural`) voices.
-  * Generates audio for each individual segment.
+  * **Zero-Shot Voice Cloning**: If `openvoice` and its checkpoints are present in `checkpoints_v2/`, the agent extracts a 3-second tone-color embedding from the original English speaker (`audio/original_audio.wav`). It then dynamically extracts the base speaker embedding from the newly synthesized segment audio and uses OpenVoice V2's `ToneColorConverter` to adapt the tone color. The final speech sounds exactly like the original speaker speaking Kannada.
+  * **Multi-Agent Parallelization**: Instead of sequentially synthesizing segments, the agent uses a Python `ThreadPoolExecutor` to process segments concurrently. A thread-safety Lock (`melo_lock`) ensures that CPU-intensive PyTorch model execution is serialized to prevent crashes, while IO-bound operations (edge-tts HTTP calls, pydub adjustments) run in parallel.
   * **Synchronization Control**:
     * Measures duration of synthesized WAV ($T_{synth}$) vs original segment window ($T_{target}$).
     * If the audio is too long ($T_{synth} > T_{target}$): Chains FFmpeg `atempo` filters to speed up the playback (up to 2.0x limit) without changing the speaker's voice pitch:
