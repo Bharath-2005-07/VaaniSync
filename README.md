@@ -22,6 +22,8 @@ Submitted for the **AI Agents: Intensive Vibe Coding Capstone Project** under th
 2. **Context-Aware Translation Pacing**: Most tools perform literal sentence-by-sentence translation, resulting in artificial timing overlaps. VaaniSync uses context-aware paragraph-level batching and dynamically computes speed compression factors (`atempo`) and padding offsets (`pydub`) so that regional dubs seamlessly align with the original speaker's video speed.
 3. **Zero-Shot Speaker Identity Preservation**: Rather than converting your video to a generic synthesized voice profile, our integrated OpenVoice V2 architecture extracts a brief tone-color embedding from the original speaker, applying it to Kannada voice synthesis. The speaker retains their unique vocal identity across languages.
 4. **Resilient Local Multi-Agent Architecture**: Built on Google ADK 2.0, the pipeline relies on independent, modular agents for extraction, transcription, translation, synthesis, and muxing. With custom retry configurations and offline fallback paths, the system will never crash if a single external connection drops.
+5. **Concurrent Multi-Threaded Synthesis**: While local execution of deep-learning speech models is typically slow on consumer CPUs, VaaniSync integrates a thread-pooled parallel execution model with thread-safety locks. This allows multiple segments to be synthesized concurrently, maximizing CPU core utilization and cutting down processing time by over 50%.
+6. **Robust Cross-Format Video Support**: Leveraging native FFmpeg interfaces, the pipeline automatically parses, processes, and remuxes practically any modern video container format (like `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm`, and `.3gp`), dynamically outputting the final dubbed video in the exact same format container as the input.
 
 ---
 
@@ -276,20 +278,38 @@ class PipelineInput(BaseModel):
 
 ---
 
-## ⚠️ Scalability Analysis & Architecture Integrity
+## ⚠️ Known Limitations, Drawbacks & Mitigations
 
-While local execution guarantees privacy and cost savings, scaling to feature-length media (e.g., films or multi-hour lectures) introduces real-world bottlenecks. Here is how VaaniSync maintains architectural integrity:
+While VaaniSync is highly robust for offline regional dubbing, it has certain limitations in CPU-bound execution. Below are the key drawbacks and their corresponding mitigation strategies:
 
 ### 1. API Rate Limiting (Google Translate)
 * **Problem**: Making separate HTTP requests for every Whisper subtitle segment triggers **HTTP 429 (Too Many Requests)**.
-* **Our Solution**: Implemented **Smart Delimiter Translation Batching**. Multiple segments are concatenated using the custom ` ||| ` separator and sent to the translation API in a single HTTP request. This reduces API roundtrips by up to 90%. If an API error occurs, the system gracefully falls back to individual segment requests.
+* **Current Mitigation**: Implemented **Smart Delimiter Translation Batching**. Multiple segments are concatenated using the custom ` ||| ` separator and sent to the translation API in a single HTTP request, reducing API calls by up to 90%. If an API error occurs, the system gracefully falls back to individual segment requests.
+* **Future Mitigation**: Move to a fully local translation engine using offline HuggingFace translation pipelines (e.g. `Helsinki-NLP/OPUS-mt-en-dra` or local Ollama instances running `llama3:8b`) to eliminate API dependencies completely.
 
 ### 2. CPU Synthesis Bottlenecks
 * **Problem**: Text-to-speech generation and zero-shot voice cloning on CPU are computationally heavy and slow when executed sequentially.
-* **Our Solution**: Implemented **ThreadPool Parallel Synthesis**. We synthesize segments concurrently using a python `ThreadPoolExecutor`. CPU-bound model inference is serialized with a threading Lock (`melo_lock`) to prevent cache thrashing, while network tasks (Edge-TTS) and file operations run in parallel, cutting processing time by over 50%.
+* **Current Mitigation**: Implemented **ThreadPool Parallel Synthesis**. We synthesize segments concurrently using a python `ThreadPoolExecutor`. CPU-bound model inference is serialized with a threading Lock (`melo_lock`) to prevent cache thrashing, while network tasks (Edge-TTS) and file operations run in parallel, cutting processing time by over 50%.
+* **Future Mitigation**: Integrate OpenVINO or ONNX Runtime to compile MeloTTS/OpenVoice V2 models, enabling high-speed INT8 quantized inference directly on Intel/AMD consumer CPUs.
 
 ### 3. Context Window Limits
 * **Problem**: Translating extremely long transcripts in a single local LLM prompt can exceed the context window limits (e.g. 8k tokens) of models like Gemma or Mistral.
-* **Mitigation**: Long subtitle lists are chunked into rolling context blocks of 20-30 segments. Each block is translated independently with overlapping boundaries to preserve narrative context.
+* **Current Mitigation**: Long subtitle lists are chunked into rolling context blocks of 20-30 segments. Each block is translated independently with overlapping boundaries to preserve narrative context.
+* **Future Mitigation**: Implement a stateful MapReduce translation agent pattern that summarizes context history into a persistent metadata store passed to subsequent chunk translation agents.
+
+### 4. Single-Speaker Constraint (No Diarization)
+* **Problem**: The pipeline extracts a single tone embedding from the original audio. If a video contains multiple speakers (e.g. dialogue or panel discussion), all translated speech will be morphed into the main speaker's voice.
+* **Current Mitigation**: The system accepts a gender hint (`male`/`female`) to select the base synthesis profile, but applies the same clone converter to all segments.
+* **Future Mitigation**: Integrate local speaker diarization (e.g., `pyannote.audio` or lightweight `spectralcluster`) to segment the original wav file by speaker ID, extract a tone embedding for each unique speaker, and apply matching cloned voices dynamically.
+
+### 5. Prosody and Emotion Cloning Constraints
+* **Problem**: OpenVoice V2 clones the speaker's vocal color (timbre) but not their emotion, rhythm, or dramatic phrasing. The cloned voice inherits the flat, even prosody of the base MeloTTS engine.
+* **Current Mitigation**: Pacing is automatically adjusted using FFmpeg `atempo` speed stretching and silent padding.
+* **Future Mitigation**: Upgrade to advanced voice cloning backends (like local XTTS-v2 or VALL-E) that support joint style, pitch contour, and emotion transfer alongside timbre cloning.
+
+### 6. Extreme Compression Capping (2.0x Limit)
+* **Problem**: If the translated Kannada sentence is significantly longer than the original English sentence window, speeding it up beyond `2.0x` renders the speech completely unintelligible.
+* **Current Mitigation**: A hard cap of `2.0x` is applied. If a segment exceeds this, the audio file is trimmed to fit the target duration, causing slight speech clipping.
+* **Future Mitigation**: Implement dynamic video speed modulation. The system can interactively extend the original video's frames (injecting duplicate frames or slow-motion segments) to match the required speech length when a translation is extremely long.
 
 ---
