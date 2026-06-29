@@ -15,16 +15,16 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "gemma2:2b"
 
 
-def _translate_batch(batch_segments: list[dict], model: str = DEFAULT_MODEL) -> list[dict]:
+def _translate_batch(batch_segments: list[dict], target_language: str = "Kannada", model: str = DEFAULT_MODEL) -> list[dict]:
     """Translate a batch of segments together using local Ollama."""
     input_data = [{"id": i + 1, "text": seg["text"]} for i, seg in enumerate(batch_segments)]
     input_str = json.dumps(input_data, ensure_ascii=False, indent=2)
 
     prompt = (
-        "You are an expert English-to-Kannada video dubbing translator. Your job is to translate subtitle segments accurately, maintaining the overall meaning, tone, and context of the video. \n\n"
+        f"You are an expert English-to-{target_language} video dubbing translator. Your job is to translate subtitle segments accurately, maintaining the overall meaning, tone, and context of the video. \n\n"
         "CRITICAL RULES:\n"
-        "1. Translate the meaning of the entire conversation naturally into spoken, conversational Kannada (ಕನ್ನಡ)—do not perform literal word-for-word translations.\n"
-        "2. Because English is Subject-Verb-Object and Kannada is Subject-Object-Verb, adjust the sentence structure across adjacent segments so it sounds grammatically flawless to a native Kannada speaker. Ensure that the meaning in both languages is same.\n"
+        f"1. Translate the meaning of the entire conversation naturally into spoken, conversational {target_language}—do not perform literal word-for-word translations.\n"
+        f"2. Adjust the sentence structure across adjacent segments so it sounds grammatically flawless and natural in {target_language}. Ensure that the meaning in both languages is same.\n"
         "3. Keep the translation concise so it can be spoken within the allocated time windows.\n"
         "4. Return ONLY a valid JSON array matching the exact index structure provided. Do not include markdown formatting or conversational filler.\n\n"
         f"Input JSON to translate:\n{input_str}\n\n"
@@ -86,8 +86,8 @@ def check_ollama_connection(model: str = DEFAULT_MODEL) -> dict:
     return {"running": False, "model": model, "available": False}
 
 
-def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
-    """Translate segments from file into Kannada and write translated_segments.json."""
+def translate_segments(segments_path: str, target_language: str = "Kannada", model: str = DEFAULT_MODEL) -> dict:
+    """Translate segments from file into target language and write translated_segments.json."""
     segments_file = Path(segments_path)
     if not segments_file.exists():
         return {"success": False, "error": f"File not found: {segments_path}"}
@@ -97,7 +97,7 @@ def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
     errors = []
 
     try:
-        translated_batch = _translate_batch(segments, model)
+        translated_batch = _translate_batch(segments, target_language, model)
         translation_map = {}
         for item in translated_batch:
             if isinstance(item, dict) and "id" in item and "text" in item:
@@ -107,13 +107,13 @@ def translate_segments(segments_path: str, model: str = DEFAULT_MODEL) -> dict:
                     pass
 
         for i, seg in enumerate(segments):
-            kannada = translation_map.get(i + 1, seg["text"])
+            translated_text = translation_map.get(i + 1, seg["text"])
             translated.append(
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "original_text": seg["text"],
-                    "text": kannada,
+                    "text": translated_text,
                 }
             )
     except Exception as e:

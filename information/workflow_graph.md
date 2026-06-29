@@ -1,6 +1,6 @@
 # 🎬 Video Localizer — Workflow Graph
 
-This document details the 5-stage sequential pipeline designed for local video localization and dubbing into Kannada.
+This document details the 5-stage sequential pipeline designed for local video localization and dubbing into any dynamically requested target language (like Spanish, French, Kannada, Hindi, Telugu, German, etc.).
 
 ---
 
@@ -13,7 +13,7 @@ flowchart TD
     subgraph Pipeline ["5-Stage Dubbing Pipeline"]
         ParseInput -->|"PipelineInput"| ExtractAudio["Stage 1: Extract & Denoise Audio"]
         ExtractAudio -->|"ExtractionResult"| TranscribeAudio["Stage 2: Transcribe via Whisper"]
-        TranscribeAudio -->|"TranscriptionResult"| TranslateSegments["Stage 3: Translate to Kannada"]
+        TranscribeAudio -->|"TranscriptionResult"| TranslateSegments["Stage 3: Translate to Target Language"]
         TranslateSegments -->|"TranslationResult"| SynthesiseSegments["Stage 4: Synthesize Speech"]
         SynthesiseSegments -->|"SynthesisResult"| MuxVideo["Stage 5: Mux & Assemble Video"]
     end
@@ -116,5 +116,5 @@ Choose one of the three options:
   ```
 * **ADK CLI**:
   ```powershell
-  adk run video_localizer "Convert the audio of video/video1.mp4 to Kannada"
+  adk run video_localizer "Convert the audio of video/video1.mp4 to Spanish"
   ```

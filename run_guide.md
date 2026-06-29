@@ -35,7 +35,7 @@ To start the visual local development server provided by Google ADK:
 .\.venv\Scripts\adk.exe web video_localizer --port 8001
 ```
 * **Access URL**: Open [http://127.0.0.1:8001](http://127.0.0.1:8001) in your browser.
-* **Command Prompt**: Type `Convert the audio of video/virat_kohli.mp4 to Kannada` to trigger execution.
+* **Command Prompt**: Type `Convert the audio of video/virat_kohli.mp4 to Spanish` (or Kannada, French, Hindi, etc.) to trigger execution.
 
 ---
 
@@ -43,8 +43,8 @@ To start the visual local development server provided by Google ADK:
 Run the pipeline directly from your PowerShell terminal:
 
 ```powershell
-# Run the pipeline with default target settings
-.\.venv\Scripts\adk.exe run video_localizer "Convert the audio of video/virat_kohli.mp4 to Kannada"
+# Run the pipeline with any target language
+.\.venv\Scripts\adk.exe run video_localizer "Convert the audio of video/virat_kohli.mp4 to Spanish"
 ```
 
 ---

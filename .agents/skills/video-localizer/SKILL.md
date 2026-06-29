@@ -1,8 +1,8 @@
 ---
 name: video-localizer
-description: Automates video translation and audio localization on a local machine. Converts video speech from the original language into Kannada, matching timestamps and synthesising natural speech locally using MeloTTS on CPU.
-target_language: Kannada
-tts_engine: MeloTTS
+description: Automates video translation and audio localization on a local machine. Converts video speech from the original language into any dynamically requested language (like Spanish, French, Kannada, Hindi, Telugu, etc.), matching timestamps and synthesising natural speech locally using MeloTTS/edge-tts on CPU.
+target_language: Dynamic (Defaults to Kannada)
+tts_engine: MeloTTS / Edge-TTS
 llm_backend: Ollama
 ---
 
@@ -215,8 +215,8 @@ You MUST:
 
 ## Notes
 - All processing is **100% local** — no cloud API calls for the core pipeline.
-- **Target language:** Kannada (ಕನ್ನಡ) — language code `KN`
-- **TTS engine:** MeloTTS — CPU-native, no GPU required
+- **Target language:** Dynamic — maps automatically from user requests (e.g. Spanish, French, Kannada, Hindi, Telugu, German, etc.)
+- **TTS engine:** MeloTTS (for supported languages) or Edge-TTS (as high-quality fallback) — CPU-native, no GPU required
 - **LLM backend:** Ollama with `gemma2:2b` — best accuracy/speed for CPU laptops
 - **Whisper model:** `small` recommended for CPU; `base` for faster but less accurate transcription
 - The `google-adk` framework handles agent orchestration, tool calling, and session state.

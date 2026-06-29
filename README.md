@@ -228,43 +228,29 @@ VaaniSync is designed with a **privacy-first, local-first** architecture:
 
 ---
 
-## 🌍 Setting Up Other Local Languages
+## 🌍 Dynamic Multi-Language Support
 
-To adapt VaaniSync for any other local language (e.g. Hindi, Spanish, Tamil, Telugu), follow this simple setup mapping guide:
+VaaniSync dynamically parses and handles the target language directly from the user's natural language request (e.g., in the chat box or CLI). There is no need to manually update code configurations to switch languages!
 
-### 1. Configure Translation Target
-In [video_localizer/agent.py](video_localizer/agent.py#L95-L117), modify the target code inside `_translate_batch`:
-```python
-# Change "kn" to "hi" (Hindi), "te" (Telugu), "es" (Spanish), etc.
-translator = GoogleTranslator(source="auto", target="hi")
-```
+### Supported Languages & Mapping
 
-### 2. Configure TTS Voices
-In [video_localizer/agent.py](video_localizer/agent.py#L444-L624), map the target language codes to supported voices in `edge-tts` and `MeloTTS`:
-* **Hindi (hi)**:
-  * Edge Female: `hi-IN-SwararaNeural` | Edge Male: `hi-IN-MadhurNeural`
-* **Telugu (te)**:
-  * Edge Female: `te-IN-ShrutiNeural` | Edge Male: `te-IN-MohanNeural`
-* **Spanish (es)**:
-  * Edge Female: `es-ES-ElviraNeural` | Edge Male: `es-ES-AlvaroNeural`
-  * MeloTTS language code: `ES`
+The pipeline automatically maps user queries to Google Translator codes, Edge-TTS neural voices, and MeloTTS language models for the following pre-configured locales:
 
-```python
-# In synthesise_segments, update voice constants:
-edge_voice_female = "hi-IN-SwararaNeural"
-edge_voice_male = "hi-IN-MadhurNeural"
-# Also update the MeloTTS config code if using MeloTTS:
-melo_tts = TTS(language="HI", device="cpu")
-```
-
-### 3. Update default arguments
-Update the default properties in [PipelineInput](video_localizer/agent.py#L34-L40):
-```python
-class PipelineInput(BaseModel):
-    video_path: str = "video/video1.mp4"
-    target_language: str = "Hindi"  # <-- Update this default
-    speaker_gender: str = "male"
-```
+- **Kannada (kn)**: Edge Sapna/Gagan Neural, MeloTTS `KN`
+- **Hindi (hi)**: Edge Swarara/Madhur Neural
+- **Telugu (te)**: Edge Shruti/Mohan Neural
+- **Tamil (ta)**: Edge Pallavi/Valluvar Neural
+- **Spanish (es)**: Edge Elvira/Alvaro Neural, MeloTTS `ES`
+- **French (fr)**: Edge Denise/Henri Neural, MeloTTS `FR`
+- **German (de)**: Edge Amala/Conrad Neural, MeloTTS `DE`
+- **Italian (it)**: Edge Elsa/Diego Neural, MeloTTS `IT`
+- **Japanese (ja)**: Edge Nanami/Keita Neural, MeloTTS `JP`
+- **Chinese (zh-CN)**: Edge Xiaoxiao/Yunxi Neural, MeloTTS `ZH`
+- **Korean (ko)**: Edge SunHi/InJoon Neural, MeloTTS `KR`
+- **Portuguese (pt)**: Edge Francisca/Antonio Neural
+- **Russian (ru)**: Edge Svetlana/Dmitry Neural
+- **Arabic (ar)**: Edge Salma/Shakir Neural
+- **English (en)**: Edge Jenny/Guy Neural, MeloTTS `EN`
 
 ---
 

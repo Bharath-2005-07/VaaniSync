@@ -62,6 +62,16 @@ def test_parse_input_string():
     assert isinstance(output, PipelineInput)
     assert output.speaker_gender == "female"
 
+    # Test dynamic target language parsing for Spanish
+    ctx2 = MockContext()
+    _collect_events(parse_input(ctx2, "Dub video/video1.mp4 into Spanish"))
+    assert ctx2.state["target_language"] == "Spanish"
+
+    # Test dynamic video matching without extension (e.g. video3 or video5)
+    ctx3 = MockContext()
+    _collect_events(parse_input(ctx3, "convert video/video5 into english"))
+    assert Path(ctx3.state["video_path"]).name == "video5.mp4"
+
 
 def test_parse_input_object():
     ctx = MockContext()
@@ -209,7 +219,7 @@ def test_translate_segments(mock_translate_batch, mock_write, mock_read):
         {"id": 2, "text": "ಕನ್ನಡ 2"}
     ]
 
-    ctx = MockContext(state={"speaker_gender": "auto"})
+    ctx = MockContext(state={"speaker_gender": "auto", "target_language": "Spanish"})
     inp = TranscriptionResult(
         audio_path="audio/original_audio.wav",
         segments_path="transcripts/segments.json",
@@ -232,6 +242,11 @@ def test_translate_segments(mock_translate_batch, mock_write, mock_read):
     assert isinstance(output, TranslationResult)
     assert output.segment_count == 2
     mock_write.assert_called_once()
+    mock_translate_batch.assert_called_once_with(
+        [{"start": 0.0, "end": 2.0, "text": "Hello"}, {"start": 2.0, "end": 4.0, "text": "World"}],
+        target_lang_code="es",
+        model="gemma2:2b"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +281,7 @@ def test_synthesise_segments_edge_tts(mock_silent, mock_from_mp3, mock_exists, m
     ])
     mock_exists.return_value = True
 
-    ctx = MockContext()
+    ctx = MockContext(state={"target_language": "Spanish"})
     inp = TranslationResult(segments_path="transcripts/translated_segments.json", segment_count=2)
 
     # We mock asyncio.run / edge_tts to simulate success

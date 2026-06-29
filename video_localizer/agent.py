@@ -27,6 +27,103 @@ from google.genai import types
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
+# Target Languages Mapping & Configurations
+# ---------------------------------------------------------------------------
+
+LANGUAGE_MAP = {
+    "kannada": {
+        "code": "kn",
+        "edge_female": "kn-IN-SapnaNeural",
+        "edge_male": "kn-IN-GaganNeural",
+        "melo_lang": "KN",
+    },
+    "hindi": {
+        "code": "hi",
+        "edge_female": "hi-IN-SwararaNeural",
+        "edge_male": "hi-IN-MadhurNeural",
+        "melo_lang": None,
+    },
+    "telugu": {
+        "code": "te",
+        "edge_female": "te-IN-ShrutiNeural",
+        "edge_male": "te-IN-MohanNeural",
+        "melo_lang": None,
+    },
+    "tamil": {
+        "code": "ta",
+        "edge_female": "ta-IN-PallaviNeural",
+        "edge_male": "ta-IN-ValluvarNeural",
+        "melo_lang": None,
+    },
+    "spanish": {
+        "code": "es",
+        "edge_female": "es-ES-ElviraNeural",
+        "edge_male": "es-ES-AlvaroNeural",
+        "melo_lang": "ES",
+    },
+    "french": {
+        "code": "fr",
+        "edge_female": "fr-FR-DeniseNeural",
+        "edge_male": "fr-FR-HenriNeural",
+        "melo_lang": "FR",
+    },
+    "german": {
+        "code": "de",
+        "edge_female": "de-DE-AmalaNeural",
+        "edge_male": "de-DE-ConradNeural",
+        "melo_lang": "DE",
+    },
+    "italian": {
+        "code": "it",
+        "edge_female": "it-IT-ElsaNeural",
+        "edge_male": "it-IT-DiegoNeural",
+        "melo_lang": "IT",
+    },
+    "japanese": {
+        "code": "ja",
+        "edge_female": "ja-JP-NanamiNeural",
+        "edge_male": "ja-JP-KeitaNeural",
+        "melo_lang": "JP",
+    },
+    "chinese": {
+        "code": "zh-CN",
+        "edge_female": "zh-CN-XiaoxiaoNeural",
+        "edge_male": "zh-CN-YunxiNeural",
+        "melo_lang": "ZH",
+    },
+    "korean": {
+        "code": "ko",
+        "edge_female": "ko-KR-SunHiNeural",
+        "edge_male": "ko-KR-InJoonNeural",
+        "melo_lang": "KR",
+    },
+    "portuguese": {
+        "code": "pt",
+        "edge_female": "pt-BR-FranciscaNeural",
+        "edge_male": "pt-BR-AntonioNeural",
+        "melo_lang": None,
+    },
+    "russian": {
+        "code": "ru",
+        "edge_female": "ru-RU-SvetlanaNeural",
+        "edge_male": "ru-RU-DmitryNeural",
+        "melo_lang": None,
+    },
+    "arabic": {
+        "code": "ar",
+        "edge_female": "ar-EG-SalmaNeural",
+        "edge_male": "ar-EG-ShakirNeural",
+        "melo_lang": None,
+    },
+    "english": {
+        "code": "en",
+        "edge_female": "en-US-JennyNeural",
+        "edge_male": "en-US-GuyNeural",
+        "melo_lang": "EN",
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Pydantic schemas — typed I/O at every edge keeps the graph safe
 # ---------------------------------------------------------------------------
 
@@ -36,7 +133,7 @@ class PipelineInput(BaseModel):
 
     video_path: str = "video/video1.mp4"
     target_language: str = "Kannada"
-    speaker_gender: str = "male"
+    speaker_gender: str = "auto"
 
 
 class ExtractionResult(BaseModel):
@@ -91,11 +188,11 @@ def _detect_gender_heuristics(segments: list[dict]) -> list[str]:
     return genders
 
 
-def _translate_batch(batch_segments: list[dict], model: str = "gemma2:2b") -> list[dict]:
+def _translate_batch(batch_segments: list[dict], target_lang_code: str = "kn", model: str = "gemma2:2b") -> list[dict]:
     """Translate a batch of segments using GoogleTranslator with delimiter batching."""
     from deep_translator import GoogleTranslator
 
-    translator = GoogleTranslator(source="auto", target="kn")
+    translator = GoogleTranslator(source="auto", target=target_lang_code)
     translated_data = []
 
     # Filter out empty texts but keep track of indices
@@ -172,7 +269,7 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
     """Parse initial request query to extract pipeline arguments."""
     video_path = "video/video1.mp4"
     target_language = "Kannada"
-    speaker_gender = "male"
+    speaker_gender = "auto"
 
     if isinstance(node_input, str):
         query = node_input.lower()
@@ -181,12 +278,32 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
         elif "male" in query or "men" in query or "man" in query:
             speaker_gender = "male"
 
-        # Dynamically extract mp4 file name if present in query
-        import re
+        # Dynamically extract target language from query string if present
+        for lang_name in LANGUAGE_MAP:
+            if lang_name in query:
+                target_language = lang_name.capitalize()
+                break
 
-        match = re.search(r"([\w\-\./]+\.mp4)", node_input)
-        if match:
-            video_path = match.group(1)
+        # 1. First, search for any exact filename/stem in the query that exists in the video/ directory
+        video_dir = Path("video")
+        video_found = False
+        if video_dir.exists():
+            for file_path in video_dir.iterdir():
+                if file_path.is_file():
+                    name_lower = file_path.name.lower()
+                    stem_lower = file_path.stem.lower()
+                    pattern_name = rf"\b{re.escape(name_lower)}\b"
+                    pattern_stem = rf"\b{re.escape(stem_lower)}\b"
+                    if re.search(pattern_name, query) or re.search(pattern_stem, query):
+                        video_path = str(file_path)
+                        video_found = True
+                        break
+
+        # 2. If not found in video/ folder files list, extract by regex pattern as fallback
+        if not video_found:
+            match = re.search(r"([\w\-\./]+\.(?:mp4|mkv|mov|avi|webm|3gp))", node_input, re.IGNORECASE)
+            if match:
+                video_path = match.group(1)
 
     elif isinstance(node_input, PipelineInput):
         video_path = node_input.video_path
@@ -214,7 +331,7 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
             role="model",
             parts=[
                 types.Part.from_text(
-                    text=f"Starting Kannada dubbing pipeline for: {video_path} (Voice: {speaker_gender})"
+                    text=f"Starting {target_language} dubbing pipeline for: {video_path} (Voice: {speaker_gender})"
                 )
             ],
         )
@@ -316,10 +433,15 @@ def transcribe_audio(ctx: Context, node_input: ExtractionResult) -> Transcriptio
 
 
 def translate_segments(ctx: Context, node_input: TranscriptionResult) -> TranslationResult:
-    """Translate all segments to Kannada via Gemini 2.0 or local Ollama using batching."""
+    """Translate all segments to target language via Gemini 2.0 or local Ollama using batching."""
     import os
 
     import requests
+
+    target_lang_name = ctx.state.get("target_language", "Kannada").lower()
+    lang_info = LANGUAGE_MAP.get(target_lang_name, LANGUAGE_MAP["kannada"])
+    target_lang_code = lang_info["code"]
+    display_lang = target_lang_name.capitalize()
 
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     model = "gemma2:2b"
@@ -343,7 +465,7 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
         genders = [speaker_gender] * len(segments)
 
     # Translate in a single batch to capture global context
-    translated_batch = _translate_batch(segments, model=model)
+    translated_batch = _translate_batch(segments, target_lang_code=target_lang_code, model=model)
 
     translation_map = {}
     for item in translated_batch:
@@ -355,13 +477,13 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
 
     translated = []
     for i, seg in enumerate(segments):
-        kannada = translation_map.get(i + 1, seg["text"])
+        translated_text = translation_map.get(i + 1, seg["text"])
         translated.append(
             {
                 "start": seg["start"],
                 "end": seg["end"],
                 "original_text": seg["text"],
-                "text": kannada,
+                "text": translated_text,
                 "gender": genders[i],
             }
         )
@@ -377,7 +499,7 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
             role="model",
             parts=[
                 types.Part.from_text(
-                    text=f"Stage 3 — Translated {len(translated)} segments to Kannada (Voice: {speaker_gender}) -> {output_json}"
+                    text=f"Stage 3 — Translated {len(translated)} segments to {display_lang} (Voice: {speaker_gender}) -> {output_json}"
                 )
             ],
         )
@@ -449,13 +571,20 @@ def _pad_or_trim(audio_path: str, target_ms: int) -> None:
 
 
 def synthesise_segments(ctx: Context, node_input: TranslationResult) -> SynthesisResult:
-    """Synthesise Kannada speech for each translated text segment and pad/trim to match duration."""
+    """Synthesise target language speech for each translated text segment and pad/trim to match duration."""
     import os
     import threading
     from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
 
     from pydub import AudioSegment
+
+    target_lang_name = ctx.state.get("target_language", "Kannada").lower()
+    lang_info = LANGUAGE_MAP.get(target_lang_name, LANGUAGE_MAP["kannada"])
+    edge_voice_female = lang_info["edge_female"]
+    edge_voice_male = lang_info["edge_male"]
+    melo_lang_code = lang_info["melo_lang"]
+    display_lang = target_lang_name.capitalize()
 
     segments_path = node_input.segments_path
     segments = json.loads(Path(segments_path).read_text(encoding="utf-8"))
@@ -466,14 +595,15 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
     # Try loading MeloTTS
     melo_tts = None
     melo_spk = None
-    try:
-        from melo.api import TTS
+    if melo_lang_code:
+        try:
+            from melo.api import TTS
 
-        melo_tts = TTS(language="KN", device="cpu")
-        speaker_ids = melo_tts.hps.data.spk2id
-        melo_spk = speaker_ids["KN"]
-    except Exception as e:
-        print("MeloTTS load error:", e)
+            melo_tts = TTS(language=melo_lang_code, device="cpu")
+            speaker_ids = melo_tts.hps.data.spk2id
+            melo_spk = speaker_ids.get(melo_lang_code, list(speaker_ids.values())[0])
+        except Exception as e:
+            print("MeloTTS load error:", e)
 
     # Try loading OpenVoice V2 Converter
     tone_color_converter = None
@@ -506,9 +636,6 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
         except Exception as e:
             print(f"OpenVoice V2 load/extract failed: {e}")
             tone_color_converter = None
-
-    edge_voice_female = "kn-IN-SapnaNeural"
-    edge_voice_male = "kn-IN-GaganNeural"
 
     melo_lock = threading.Lock()
 
@@ -616,7 +743,7 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
             role="model",
             parts=[
                 types.Part.from_text(
-                    text=f"Stage 4 — Synthesised {len(segments)} segments into {segments_dir} concurrently"
+                    text=f"Stage 4 — Synthesised {len(segments)} segments to {display_lang} into {segments_dir} concurrently"
                 )
             ],
         )
@@ -680,6 +807,20 @@ def mux_video(ctx: Context, node_input: SynthesisResult) -> MuxResult:
         output_path,
     ]
     subprocess.run(cmd, check=True)
+
+    # Cleanup processed and processing folders to save space
+    import shutil
+    for folder in ["processed", "processing"]:
+        if os.path.exists(folder):
+            try:
+                for filename in os.listdir(folder):
+                    file_path = os.path.join(folder, filename)
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"Error cleaning folder {folder}: {e}")
 
     yield Event(
         content=types.Content(

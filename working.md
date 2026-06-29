@@ -26,7 +26,7 @@ flowchart TD
         W_MODEL["faster-whisper (small CPU)"]
     end
     subgraph S3 ["Stage 3: TranslationAgent"]
-        T_ENGINE["GoogleTranslator (target='kn')"]
+        T_ENGINE["GoogleTranslator (dynamic target)"]
     end
     subgraph S4 ["Stage 4: SynthesisAgent"]
         TTS_ENGINE["edge-tts / MeloTTS"]
@@ -71,7 +71,7 @@ flowchart TD
 
 ### Stage 3: TranslationAgent
 * **Input**: [transcripts/segments.json](transcripts/segments.json)
-* **Operation**: Translates transcripts to Kannada while preserving start and end timestamps.
+* **Operation**: Translates transcripts to the target language (e.g., Kannada, Spanish, French, Hindi) while preserving start and end timestamps.
 * **Technology**: `deep-translator` (Google Translate web endpoint wrapper) with local Ollama (`gemma2:2b`) fallback.
 * **Under the hood**:
   * Scans segments for gender markers (e.g. pronouns like *he*, *she*, *him*, *her*) using a heuristic keyword filter to tag segments with gender metadata.
@@ -85,8 +85,8 @@ flowchart TD
 * **Operation**: Generates dubbed voice lines matching the original segment durations, clones voices, and parallelizes synthesis.
 * **Technology**: `edge-tts` (Microsoft Neural Voices), local `MeloTTS` (CPU version), and `OpenVoice V2` (Zero-Shot Cross-Lingual Voice Cloning).
 * **Under the hood**:
-  * Checks segment gender tags to select either male (`kn-IN-GaganNeural`) or female (`kn-IN-SapnaNeural`) voices.
-  * **Zero-Shot Voice Cloning**: If `openvoice` and its checkpoints are present in `checkpoints_v2/`, the agent extracts a 3-second tone-color embedding from the original English speaker (`audio/original_audio.wav`). It then dynamically extracts the base speaker embedding from the newly synthesized segment audio and uses OpenVoice V2's `ToneColorConverter` to adapt the tone color. The final speech sounds exactly like the original speaker speaking Kannada.
+  * Checks segment gender tags to select either male or female neural voices mapped dynamically to the target language.
+  * **Zero-Shot Voice Cloning**: If `openvoice` and its checkpoints are present in `checkpoints_v2/`, the agent extracts a 3-second tone-color embedding from the original English speaker (`audio/original_audio.wav`). It then dynamically extracts the base speaker embedding from the newly synthesized segment audio and uses OpenVoice V2's `ToneColorConverter` to adapt the tone color. The final speech sounds exactly like the original speaker speaking the target language.
   * **Multi-Agent Parallelization**: Instead of sequentially synthesizing segments, the agent uses a Python `ThreadPoolExecutor` to process segments concurrently. A thread-safety Lock (`melo_lock`) ensures that CPU-intensive PyTorch model execution is serialized to prevent crashes, while IO-bound operations (edge-tts HTTP calls, pydub adjustments) run in parallel.
   * **Synchronization Control**:
     * Measures duration of synthesized WAV ($T_{synth}$) vs original segment window ($T_{target}$).
