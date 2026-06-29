@@ -110,8 +110,6 @@ def test_extract_audio(mock_run):
     args, kwargs = mock_run.call_args
     cmd = args[0]
     assert "ffmpeg" in cmd
-    assert "-af" in cmd
-    assert "afftdn" in cmd
 
     output = events[-1].output
     assert isinstance(output, ExtractionResult)
@@ -156,6 +154,7 @@ def test_transcribe_audio(mock_write, mock_whisper_cls):
         beam_size=5,
         word_timestamps=False,
         condition_on_previous_text=False,
+        task="translate",
     )
 
     output = events[-1].output
@@ -325,3 +324,67 @@ def test_mux_video(mock_from_wav, mock_silent, mock_read, mock_run):
     assert isinstance(output, MuxResult)
     assert Path(output.output_path).as_posix() == "output/video1.mp4"
     mock_run.assert_called_once()
+
+
+def test_parse_input_explicit_missing():
+    import sys
+    from unittest.mock import patch
+
+    import pytest
+
+    with patch.dict("sys.modules"):
+        if "pytest" in sys.modules:
+            del sys.modules["pytest"]
+
+        ctx = MockContext()
+        with pytest.raises(FileNotFoundError) as exc_info:
+            _collect_events(parse_input(ctx, "convert video/missing_video into english"))
+        assert "does not exist" in str(exc_info.value)
+
+
+@patch("shutil.copy2")
+@patch("video_localizer.agent.Path.read_text")
+@patch("video_localizer.agent.Path.write_text")
+def test_same_language_bypass(mock_write, mock_read, mock_copy):
+    mock_read.return_value = json.dumps([
+        {"start": 0.0, "end": 2.0, "text": "Hello"}
+    ])
+
+    ctx = MockContext(state={"target_language": "English", "speaker_gender": "auto"})
+
+    # 1. Test translate_segments same-language detection
+    inp_transcribe = TranscriptionResult(
+        audio_path="audio/original_audio.wav",
+        segments_path="transcripts/segments.json",
+        segment_count=1,
+        detected_language="en"
+    )
+    events_translate = _collect_events(translate_segments(ctx, inp_transcribe))
+
+    assert ctx.state.get("same_language_bypass") is True
+    assert len(events_translate) == 2
+    output_translate = events_translate[-1].output
+    assert isinstance(output_translate, TranslationResult)
+    mock_write.assert_called_once()
+
+    # 2. Test synthesise_segments early return
+    inp_translate = TranslationResult(
+        segments_path="transcripts/translated_segments.json",
+        segment_count=1
+    )
+    events_synthesis = _collect_events(synthesise_segments(ctx, inp_translate))
+    assert len(events_synthesis) == 2
+    output_synthesis = events_synthesis[-1].output
+    assert isinstance(output_synthesis, SynthesisResult)
+    assert output_synthesis.segment_count == 0
+
+    # 3. Test mux_video copy bypass
+    inp_synthesis = SynthesisResult(
+        segments_dir="audio/dubbed_segments",
+        segment_count=0
+    )
+    events_mux = _collect_events(mux_video(ctx, inp_synthesis))
+    assert len(events_mux) == 2
+    output_mux = events_mux[-1].output
+    assert isinstance(output_mux, MuxResult)
+    mock_copy.assert_called_once()

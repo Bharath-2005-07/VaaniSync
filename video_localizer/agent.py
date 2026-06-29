@@ -131,7 +131,7 @@ LANGUAGE_MAP = {
 class PipelineInput(BaseModel):
     """Parsed from the user's initial message."""
 
-    video_path: str = "video/video1.mp4"
+    video_path: str = "video/virat_kohli.mp4"
     target_language: str = "Kannada"
     speaker_gender: str = "auto"
 
@@ -267,9 +267,11 @@ def _translate_one(text: str, context: str = "", model: str = "gemma2:2b") -> st
 
 def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
     """Parse initial request query to extract pipeline arguments."""
-    video_path = "video/video1.mp4"
+    video_path = "video/virat_kohli.mp4"
     target_language = "Kannada"
     speaker_gender = "auto"
+
+    explicit_video = False
 
     if isinstance(node_input, str):
         query = node_input.lower()
@@ -297,6 +299,7 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
                     if re.search(pattern_name, query) or re.search(pattern_stem, query):
                         video_path = str(file_path)
                         video_found = True
+                        explicit_video = True
                         break
 
         # 2. If not found in video/ folder files list, extract by regex pattern as fallback
@@ -304,23 +307,43 @@ def parse_input(ctx: Context, node_input: str | PipelineInput) -> PipelineInput:
             match = re.search(r"([\w\-\./]+\.(?:mp4|mkv|mov|avi|webm|3gp))", node_input, re.IGNORECASE)
             if match:
                 video_path = match.group(1)
+                explicit_video = True
+            else:
+                # 3. If no extension was specified, look for video/<name> or similar path patterns in the query
+                match_no_ext = re.search(r"([\w\-\./]+/([\w\-]+))", node_input, re.IGNORECASE)
+                if match_no_ext:
+                    video_path = match_no_ext.group(1) + ".mp4"
+                    explicit_video = True
 
     elif isinstance(node_input, PipelineInput):
         video_path = node_input.video_path
         target_language = node_input.target_language
         speaker_gender = node_input.speaker_gender
+        if video_path != "video/virat_kohli.mp4":
+            explicit_video = True
     elif isinstance(node_input, dict):
-        video_path = node_input.get("video_path", video_path)
+        if "video_path" in node_input:
+            video_path = node_input["video_path"]
+            if video_path != "video/virat_kohli.mp4":
+                explicit_video = True
         target_language = node_input.get("target_language", target_language)
         speaker_gender = node_input.get("speaker_gender", speaker_gender)
 
     # Detect video file dynamically from video/ directory if non-existent
     if not os.path.exists(video_path) and "pytest" not in sys.modules:
+        if explicit_video:
+            raise FileNotFoundError(f"Requested video file '{video_path}' does not exist.")
+
         video_dir = Path("video")
+        video_resolved = False
         if video_dir.exists():
             mp4_files = list(video_dir.glob("*.mp4"))
             if mp4_files:
                 video_path = str(mp4_files[0])
+                video_resolved = True
+
+        if not video_resolved:
+            raise FileNotFoundError(f"Video file '{video_path}' does not exist, and no fallback video was found in video/ directory.")
 
     ctx.state["video_path"] = video_path
     ctx.state["target_language"] = target_language
@@ -394,19 +417,36 @@ def transcribe_audio(ctx: Context, node_input: ExtractionResult) -> Transcriptio
     os.makedirs("transcripts", exist_ok=True)
     output_json = "transcripts/segments.json"
 
+    # We always use Whisper's built-in translation to English. This avoids Whisper
+    # generating low-resource scripts (which often yields gibberish) and leverages
+    # Google Translate's extremely robust English-to-any-language translation.
+    task = "translate"
+
     model = WhisperModel("small", device="cpu", compute_type="int8")
     segments_iter, info = model.transcribe(
         node_input.audio_path,
         beam_size=5,
         word_timestamps=False,
         condition_on_previous_text=False,
+        task=task,
     )
 
     segments = []
-    for s in segments_iter:
+    raw_segs = list(segments_iter)
+    margin = 0.25  # 250ms padding at the end of each segment
+    for i, s in enumerate(raw_segs):
+        end_time = s.end + margin
+        if i < len(raw_segs) - 1:
+            end_time = min(end_time, raw_segs[i+1].start)
         segments.append(
-            {"start": round(s.start, 3), "end": round(s.end, 3), "text": s.text.strip()}
+            {
+                "start": round(s.start, 3),
+                "end": round(end_time, 3),
+                "text": s.text.strip(),
+            }
         )
+
+    ctx.state["detected_language"] = info.language
 
     Path(output_json).write_text(
         json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -443,6 +483,49 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
     target_lang_code = lang_info["code"]
     display_lang = target_lang_name.capitalize()
 
+    detected_lang_code = node_input.detected_language
+    same_lang = (target_lang_code == detected_lang_code)
+    ctx.state["same_language_bypass"] = same_lang
+
+    if same_lang:
+        segments = json.loads(Path(node_input.segments_path).read_text(encoding="utf-8"))
+        speaker_gender = ctx.state.get("speaker_gender", "auto")
+        if speaker_gender == "auto":
+            genders = _detect_gender_heuristics(segments)
+        else:
+            genders = [speaker_gender] * len(segments)
+
+        translated = []
+        for i, seg in enumerate(segments):
+            translated.append(
+                {
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "original_text": seg["text"],
+                    "text": seg["text"],
+                    "gender": genders[i],
+                }
+            )
+
+        os.makedirs("transcripts", exist_ok=True)
+        output_json = "transcripts/translated_segments.json"
+        Path(output_json).write_text(
+            json.dumps(translated, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        yield Event(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part.from_text(
+                        text=f"Stage 3 — Same-language bypass detected ({detected_lang_code} -> {target_lang_code}). Skipping translation API."
+                    )
+                ],
+            )
+        )
+        yield Event(output=TranslationResult(segments_path=output_json, segment_count=len(translated)))
+        return
+
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     model = "gemma2:2b"
     if not api_key:
@@ -459,10 +542,6 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
     segments = json.loads(Path(node_input.segments_path).read_text(encoding="utf-8"))
 
     speaker_gender = ctx.state.get("speaker_gender", "auto")
-    if speaker_gender == "auto":
-        genders = _detect_gender_heuristics(segments)
-    else:
-        genders = [speaker_gender] * len(segments)
 
     # Translate in a single batch to capture global context
     translated_batch = _translate_batch(segments, target_lang_code=target_lang_code, model=model)
@@ -484,7 +563,6 @@ def translate_segments(ctx: Context, node_input: TranscriptionResult) -> Transla
                 "end": seg["end"],
                 "original_text": seg["text"],
                 "text": translated_text,
-                "gender": genders[i],
             }
         )
 
@@ -552,20 +630,27 @@ def _pad_or_trim(audio_path: str, target_ms: int) -> None:
     ratio = cur / target_ms
 
     if ratio > 1.0:
-        # Audio is longer than target_ms; speed it up
+        # Audio is longer than target_ms; speed it up (cap at 2.0x to ensure intelligibility)
         speed_factor = min(2.0, ratio)
         _change_speed_ffmpeg(audio_path, speed_factor)
         # Reload the sped-up sound
         sound = AudioSegment.from_wav(audio_path)
         sound = sound.set_frame_rate(16000).set_channels(1)
         cur = len(sound)
+    elif ratio < 1.0:
+        # Audio is shorter than target_ms; slow it down to fill the space naturally (cap at 0.85x)
+        speed_factor = max(0.85, ratio)
+        if speed_factor < 1.0:
+            _change_speed_ffmpeg(audio_path, speed_factor)
+            # Reload the slowed-down sound
+            sound = AudioSegment.from_wav(audio_path)
+            sound = sound.set_frame_rate(16000).set_channels(1)
+            cur = len(sound)
 
-    # Now pad or trim to ensure it is EXACTLY target_ms
+    # Now pad if the audio is shorter than target_ms
     if cur < target_ms:
         silence = AudioSegment.silent(duration=target_ms - cur, frame_rate=16000)
         sound = sound + silence
-    elif cur > target_ms:
-        sound = sound[:target_ms]
 
     sound.export(audio_path, format="wav")
 
@@ -573,6 +658,24 @@ def _pad_or_trim(audio_path: str, target_ms: int) -> None:
 def synthesise_segments(ctx: Context, node_input: TranslationResult) -> SynthesisResult:
     """Synthesise target language speech for each translated text segment and pad/trim to match duration."""
     import os
+
+    segments_dir = "audio/dubbed_segments"
+    os.makedirs(segments_dir, exist_ok=True)
+
+    if ctx.state.get("same_language_bypass"):
+        yield Event(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part.from_text(
+                        text="Stage 4 — Same-language bypass active. Skipping neural speech synthesis & cloning."
+                    )
+                ],
+            )
+        )
+        yield Event(output=SynthesisResult(segments_dir=segments_dir, segment_count=0))
+        return
+
     import threading
     from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
@@ -647,7 +750,18 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
         output_path = os.path.join(segments_dir, f"segment_{i:03d}.wav")
         base_tts_path = output_path + ".base.wav"
 
-        gender = seg.get("gender", "male")
+        # Determine base voice gender dynamically
+        gender = seg.get("gender")
+        if not gender:
+            gender = ctx.state.get("speaker_gender", "auto")
+            if gender == "auto":
+                txt = text.lower()
+                words = set(re.findall(r"\b\w+\b", txt))
+                if words & {"she", "her", "hers", "woman", "girl", "mother", "daughter", "wife", "lady"}:
+                    gender = "female"
+                else:
+                    gender = "male"
+
         voice = edge_voice_male if gender == "male" else edge_voice_female
 
         success = False
@@ -693,6 +807,15 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
                     success = True
             except Exception as e:
                 print(f"edge-tts synthesis failed for segment {i}: {e}")
+
+        # Ensure base TTS audio is standardized to 16000Hz mono before passing to OpenVoice
+        if success and os.path.exists(base_tts_path):
+            try:
+                sound = AudioSegment.from_wav(base_tts_path)
+                sound = sound.set_frame_rate(16000).set_channels(1)
+                sound.export(base_tts_path, format="wav")
+            except Exception as e:
+                print(f"Error standardizing base TTS to 16kHz mono: {e}")
 
         # 3. OpenVoice V2 Tone Color Cloning if enabled
         if success and tone_color_converter is not None and target_se is not None:
@@ -754,17 +877,34 @@ def synthesise_segments(ctx: Context, node_input: TranslationResult) -> Synthesi
 def mux_video(ctx: Context, node_input: SynthesisResult) -> MuxResult:
     """Concatenate all dubbed segments and mux them with the original video stream."""
     import os
-    import subprocess
+    import shutil
     from pathlib import Path
+
+    os.makedirs("output", exist_ok=True)
+    video_path = ctx.state.get("video_path", "video/virat_kohli.mp4")
+    original_filename = Path(video_path).name
+    output_path = os.path.join("output", original_filename)
+
+    if ctx.state.get("same_language_bypass"):
+        shutil.copy2(video_path, output_path)
+        yield Event(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part.from_text(
+                        text=f"Final Assembly — Same-language bypass active. Copied original video directly -> {output_path}"
+                    )
+                ],
+            )
+        )
+        yield Event(output=MuxResult(output_path=output_path))
+        return
+
+    import subprocess
 
     from pydub import AudioSegment
 
-    os.makedirs("output", exist_ok=True)
-    video_path = ctx.state.get("video_path", "video/video1.mp4")
-    original_filename = Path(video_path).name
-    output_path = os.path.join("output", original_filename)
     audio_segments_dir = node_input.segments_dir
-
     translated_json = "transcripts/translated_segments.json"
     segments = json.loads(Path(translated_json).read_text(encoding="utf-8"))
 
@@ -778,34 +918,84 @@ def mux_video(ctx: Context, node_input: SynthesisResult) -> MuxResult:
     else:
         total_duration_ms = int(segments[-1]["end"] * 1000) if segments else 0
 
-    full_audio = AudioSegment.silent(duration=total_duration_ms, frame_rate=16000)
-
+    # Determine required duration by simulating timeline shifting (prevents overlapping speech)
+    required_duration_ms = total_duration_ms
+    last_end_ms = 0
     for i, seg in enumerate(segments):
         seg_path = os.path.join(audio_segments_dir, f"segment_{i:03d}.wav")
         if os.path.exists(seg_path):
-            seg_sound = AudioSegment.from_wav(seg_path)
-            start_ms = int(seg["start"] * 1000)
-            full_audio = full_audio.overlay(seg_sound, position=start_ms)
+            try:
+                seg_sound = AudioSegment.from_wav(seg_path)
+                start_ms = int(seg["start"] * 1000)
+                if start_ms < last_end_ms:
+                    start_ms = last_end_ms
+                end_ms = start_ms + len(seg_sound)
+                if end_ms > required_duration_ms:
+                    required_duration_ms = end_ms
+                last_end_ms = end_ms
+            except Exception:
+                pass
+
+    full_audio = AudioSegment.silent(duration=required_duration_ms, frame_rate=16000)
+
+    last_end_ms = 0
+    for i, seg in enumerate(segments):
+        seg_path = os.path.join(audio_segments_dir, f"segment_{i:03d}.wav")
+        if os.path.exists(seg_path):
+            try:
+                seg_sound = AudioSegment.from_wav(seg_path)
+                start_ms = int(seg["start"] * 1000)
+                # Shift start time if it overlaps with the previous segment
+                if start_ms < last_end_ms:
+                    start_ms = last_end_ms
+                full_audio = full_audio.overlay(seg_sound, position=start_ms)
+                last_end_ms = start_ms + len(seg_sound)
+            except Exception as e:
+                print(f"Error overlaying segment {i}: {e}")
 
     os.makedirs("audio", exist_ok=True)
     dubbed_full_path = "audio/dubbed_full.wav"
     full_audio.export(dubbed_full_path, format="wav")
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        video_path,
-        "-i",
-        dubbed_full_path,
-        "-c:v",
-        "copy",
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a:0",
-        output_path,
-    ]
+    # If the timeline was extended due to slow speech/slowing down (> 100ms threshold),
+    # we stretch the video globally to match the new dubbed audio length exactly.
+    if required_duration_ms > total_duration_ms + 100 and total_duration_ms > 0:
+        scale = required_duration_ms / total_duration_ms
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-i",
+            dubbed_full_path,
+            "-filter:v",
+            f"setpts={scale:.6f}*PTS",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            output_path,
+        ]
+    else:
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-i",
+            dubbed_full_path,
+            "-c:v",
+            "copy",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            output_path,
+        ]
     subprocess.run(cmd, check=True)
 
     # Cleanup processed and processing folders to save space

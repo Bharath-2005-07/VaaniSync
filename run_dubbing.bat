@@ -1,3 +1,4 @@
+
 @echo off
 setlocal enabledelayedexpansion
 
@@ -19,9 +20,13 @@ if "%VIDEO_PATH%"=="" (
 )
 
 if not exist "!VIDEO_PATH!" (
-    echo Error: Video file "!VIDEO_PATH!" not found.
-    pause
-    exit /b 1
+    if exist "!VIDEO_PATH!.mp4" (
+        set "VIDEO_PATH=!VIDEO_PATH!.mp4"
+    ) else (
+        echo Error: Video file "!VIDEO_PATH!" not found.
+        pause
+        exit /b 1
+    )
 )
 
 echo.

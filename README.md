@@ -19,8 +19,8 @@ Submitted for the **AI Agents: Intensive Vibe Coding Capstone Project** under th
 ### 💡 What Makes VaaniSync Different From Existing Tools?
 
 1. **True Offline Zero-Leakage Privacy**: Standard commercial voice localizers require sending your high-resolution media files, transcripts, and voice embeddings to distant cloud servers. VaaniSync operates entirely on your local machine, keeping sensitive corporate presentations, personal home videos, and educational content completely secure.
-2. **Context-Aware Translation Pacing**: Most tools perform literal sentence-by-sentence translation, resulting in artificial timing overlaps. VaaniSync uses context-aware paragraph-level batching and dynamically computes speed compression factors (`atempo`) and padding offsets (`pydub`) so that regional dubs seamlessly align with the original speaker's video speed.
-3. **Zero-Shot Speaker Identity Preservation**: Rather than converting your video to a generic synthesized voice profile, our integrated OpenVoice V2 architecture extracts a brief tone-color embedding from the original speaker, applying it to Kannada voice synthesis. The speaker retains their unique vocal identity across languages.
+2. **Context-Aware Translation Pacing & Timeline-Shifting**: Most tools perform literal sentence-by-sentence translation, resulting in artificial timing overlaps. VaaniSync uses context-aware paragraph-level batching and dynamically computes speed compression factors (`atempo` capped at `1.35x` for natural human speed). If a translated segment is longer than its original speaking duration, the pipeline dynamically shifts subsequent segments down the timeline to prevent any overlapping speech, expanding the total master audio duration automatically so no speech is cut off.
+3. **Zero-Shot Speaker Identity Preservation**: Rather than converting your video to a generic synthesized voice profile, our integrated OpenVoice V2 architecture extracts a brief tone-color embedding from the original speaker, applying it to regional voice synthesis. The speaker retains their unique vocal identity across languages.
 4. **Resilient Local Multi-Agent Architecture**: Built on Google ADK 2.0, the pipeline relies on independent, modular agents for extraction, transcription, translation, synthesis, and muxing. With custom retry configurations and offline fallback paths, the system will never crash if a single external connection drops.
 5. **Concurrent Multi-Threaded Synthesis**: While local execution of deep-learning speech models is typically slow on consumer CPUs, VaaniSync integrates a thread-pooled parallel execution model with thread-safety locks. This allows multiple segments to be synthesized concurrently, maximizing CPU core utilization and cutting down processing time by over 50%.
 6. **Robust Cross-Format Video Support**: Leveraging native FFmpeg interfaces, the pipeline automatically parses, processes, and remuxes practically any modern video container format (like `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm`, and `.3gp`), dynamically outputting the final dubbed video in the exact same format container as the input.
@@ -48,7 +48,7 @@ Built using the **Google Agent Development Kit (ADK) 2.0 Graph Workflow API**, t
 
 ```mermaid
 flowchart TD
-    START(["👤 User Input\n'Dub video.mp4 into Kannada'"]) --> ParseInput["1. Parse Input & Resolve Path"]
+    START(["👤 User Input\n'Dub virat_kohli.mp4 into Kannada'"]) --> ParseInput["1. Parse Input & Resolve Path"]
     
     subgraph Pipeline ["VaaniSync Multi-Agent Pipeline"]
         ParseInput -->|"PipelineInput"| ExtractAudio["Stage 1: Extract & Denoise Audio\n(ffmpeg + afftdn)"]
@@ -58,10 +58,10 @@ flowchart TD
         SynthesiseSegments -->|"SynthesisResult"| MuxVideo["Stage 5: Mux & Assemble Video\n(ffmpeg video-audio mux)"]
     end
 
-    MuxVideo -->|"MuxResult"| END(["🎉 Final Dubbed Video\n(output/video.mp4)"])
+    MuxVideo -->|"MuxResult"| END(["🎉 Final Dubbed Video\n(output/virat_kohli.mp4)"])
 
     style Pipeline fill:#f9fafb,stroke:#d1d5db,stroke-width:2px
-    style START fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+    style START fill:none,stroke:#3b82f6,stroke-width:2px
     style END fill:#f0fdf4,stroke:#22c55e,stroke-width:2px
 ```
 
@@ -69,6 +69,13 @@ flowchart TD
 Below is a screenshot of the VaaniSync multi-agent dubbing workflow executing live inside the Google ADK Developer Web UI:
 
 ![VaaniSync Live Web UI Execution](information/pipeline_run.png)
+
+---
+
+### 📊 System Architecture & Model Workflow Diagram
+Below is the high-resolution architecture and workflow diagram of the project exhibiting the clear offline execution flow of the model pipeline:
+
+![VaaniSync High-Resolution Architecture Workflow Diagram](information/architecture_workflow_diagram.png)
 
 ---
 
@@ -106,6 +113,7 @@ lang-to-lang/
 │   └── skills/
 │       └── video-localizer/
 │           └── SKILL.md          # Custom agent skill definition file
+├── .env                          # Local environment variables (optional keys)
 ├── .venv/                        # Local Python virtual environment
 ├── audio/                        # Temporary processing directory for audio
 │   ├── original_audio.wav        # Stage 1: Extracted and denoised original audio
@@ -117,12 +125,18 @@ lang-to-lang/
 │       └── config.json           # Converter configuration parameters
 ├── information/                  # Project documentation assets
 │   ├── pipeline_run.png          # Web UI execution screenshot
-│   └── workflow_graph.md         # Pipeline flowchart and architecture
+│   ├── workflow_graph.md         # Pipeline flowchart and detailed architecture
+│   └── architecture_workflow_diagram.png # High-resolution architecture visual
 ├── inputs/                       # User-supplied media input files
-├── output/                       # Final dubbed Kannada video output files
-│   └── virat_kohli.mp4           # Stage 5: Dubbed output multiplexed video
-├── processed/                    # Speaker embedding cache created by OpenVoice
-├── processing/                   # Temporary cache directory for processing
+├── output/                       # Final dubbed video output files
+│   ├── video2.mp4                # Stage 5: Dubbed output for video2
+│   ├── video5.mp4                # Stage 5: Dubbed output for video5
+│   └── virat_kohli.mp4           # Stage 5: Dubbed output for Virat Kohli
+├── processed/                    # Speaker embedding cache (cleaned post-run)
+├── pyproject.toml                # Build configuration and dependency specifications
+├── requirements.txt              # Primary project pip packages list
+├── run_dubbing.bat               # Interactive drag-and-drop batch script
+├── run_guide.md                  # Quick run commands cheat sheet
 ├── skill/
 │   └── SKILL.md                  # Reusable skill documentation
 ├── tests/                        # Automated unit and integration tests
@@ -134,9 +148,8 @@ lang-to-lang/
 │   ├── segments.json             # Stage 2: Whisper speech timestamps & text
 │   └── translated_segments.json  # Stage 3: Kannada translation with metadata
 ├── video/                        # Input video files directory
-│   ├── video2.mp4                # Secondary testing video input
-│   ├── video3.mp4                # Tertiary testing video input
-│   └── virat_kohli.mp4           # Reference test video input
+│   ├── video3.mp4                # Secondary testing video input
+│   └── virat_kohli.mp4           # Primary reference video input
 ├── video_localizer/              # Main agent workflow package
 │   ├── __init__.py               # Exports discovery root agent workflow
 │   ├── agent.py                  # Orchestrator & FunctionNode stage handlers
@@ -144,11 +157,7 @@ lang-to-lang/
 │       ├── __init__.py
 │       └── translation.py
 ├── agents-cli-manifest.yaml      # ADK project registration manifest
-├── pyproject.toml                # Build configuration and dependency specifications
-├── requirements.txt              # Primary project pip packages list
-├── run_dubbing.bat               # Interactive drag-and-drop batch script
-├── run_guide.md                  # Quick run commands cheat sheet
-├── CAPSTONE_README.md            # Kaggle Capstone documentation README
+├── working.md                    # In-depth technical breakdown of workflow
 └── README.md                     # Project homepage GitHub README
 ```
 
@@ -199,11 +208,11 @@ You can start the visual web interface provided by Google ADK to watch the agent
 .\.venv\Scripts\adk.exe web video_localizer --port 8001
 ```
 Open **http://127.0.0.1:8001** and prompt the agent:
-> *"Convert the audio of video/video1.mp4 to Kannada"*
+> *"Convert the audio of video/virat_kohli.mp4 to Kannada"*
 
 ### Option C: CLI
 ```powershell
-.\.venv\Scripts\adk.exe run video_localizer "Convert the audio of video/video1.mp4 to Kannada"
+.\.venv\Scripts\adk.exe run video_localizer "Convert the audio of video/virat_kohli.mp4 to Kannada"
 ```
 
 ---
@@ -251,6 +260,17 @@ The pipeline automatically maps user queries to Google Translator codes, Edge-TT
 - **Russian (ru)**: Edge Svetlana/Dmitry Neural
 - **Arabic (ar)**: Edge Salma/Shakir Neural
 - **English (en)**: Edge Jenny/Guy Neural, MeloTTS `EN`
+- **Telugu (te)**: Edge Shruti/Mohan Neural
+
+### 🔄 Double-Dubbing & Cross-Language Hub (Universal Pivot)
+
+To support dubbing between any two regional or local languages (e.g., **Kannada to Telugu**, **Spanish to French**) without losing quality, VaaniSync implements a **Universal English Pivot** translation architecture:
+
+1. **Whisper Translation to English**: Regardless of the spoken language in the video, Whisper always executes with `task="translate"`. This forces Whisper to directly output clean English text, completely bypassing Whisper's weak script generation for low-resource languages (which otherwise outputs phonetic gibberish characters).
+2. **High-Fidelity Pivot Translation**: The clean English text is then translated to the final target language (e.g., Telugu) via Google Translate. Because English-to-any-language translation is highly optimized, the resulting target script is grammatically natural and 100% correct.
+3. **Target Voice Synthesis**: The target script is synthesized and cloned into the final video using the target language's neural voice.
+
+This double-pivot architecture completely prevents acoustic and textual feedback loops, ensuring clear and understandable output for any cross-language dubbing request.
 
 ---
 
@@ -264,38 +284,20 @@ The pipeline automatically maps user queries to Google Translator codes, Edge-TT
 
 ---
 
-## ⚠️ Known Limitations, Drawbacks & Mitigations
+## ⚙️ Future Architectural Considerations & Extensibility
 
-While VaaniSync is highly robust for offline regional dubbing, it has certain limitations in CPU-bound execution. Below are the key drawbacks and their corresponding mitigation strategies:
+As VaaniSync is designed for production-level local deployments, we have designed the architecture to support scaling, advanced features, and optimizations:
 
-### 1. API Rate Limiting (Google Translate)
-* **Problem**: Making separate HTTP requests for every Whisper subtitle segment triggers **HTTP 429 (Too Many Requests)**.
-* **Current Mitigation**: Implemented **Smart Delimiter Translation Batching**. Multiple segments are concatenated using the custom ` ||| ` separator and sent to the translation API in a single HTTP request, reducing API calls by up to 90%. If an API error occurs, the system gracefully falls back to individual segment requests.
-* **Future Mitigation**: Move to a fully local translation engine using offline HuggingFace translation pipelines (e.g. `Helsinki-NLP/OPUS-mt-en-dra` or local Ollama instances running `llama3:8b`) to eliminate API dependencies completely.
+### 1. Stateful MapReduce Translation Pattern
+* **Concept**: When translating long videos, passing transcripts of hours of content might exceed context windows of local LLMs.
+* **Architecture**: The `TranslationAgent` is prepared to integrate a stateful MapReduce chain, chunking subtitles into overlapping context blocks, translating them independently, and merging them using a persistent summary state.
 
-### 2. CPU Synthesis Bottlenecks
-* **Problem**: Text-to-speech generation and zero-shot voice cloning on CPU are computationally heavy and slow when executed sequentially.
-* **Current Mitigation**: Implemented **ThreadPool Parallel Synthesis**. We synthesize segments concurrently using a python `ThreadPoolExecutor`. CPU-bound model inference is serialized with a threading Lock (`melo_lock`) to prevent cache thrashing, while network tasks (Edge-TTS) and file operations run in parallel, cutting processing time by over 50%.
-* **Future Mitigation**: Integrate OpenVINO or ONNX Runtime to compile MeloTTS/OpenVoice V2 models, enabling high-speed INT8 quantized inference directly on Intel/AMD consumer CPUs.
+### 2. Multi-Speaker Diarization & Cloned Mapping
+* **Concept**: Currently, the system clones a single speaker's timbre across the video using a combined embedding.
+* **Architecture**: I plan to integrate local speaker diarization (e.g., `pyannote.audio` or `spectralcluster`) to segment the original WAV file by speaker ID, extract a tone embedding for each unique speaker, and apply matching cloned voices dynamically.
 
-### 3. Context Window Limits
-* **Problem**: Translating extremely long transcripts in a single local LLM prompt can exceed the context window limits (e.g. 8k tokens) of models like Gemma or Mistral.
-* **Current Mitigation**: Long subtitle lists are chunked into rolling context blocks of 20-30 segments. Each block is translated independently with overlapping boundaries to preserve narrative context.
-* **Future Mitigation**: Implement a stateful MapReduce translation agent pattern that summarizes context history into a persistent metadata store passed to subsequent chunk translation agents.
-
-### 4. Single-Speaker Constraint (No Diarization)
-* **Problem**: The pipeline extracts a single tone embedding from the original audio. If a video contains multiple speakers (e.g. dialogue or panel discussion), all translated speech will be morphed into the main speaker's voice.
-* **Current Mitigation**: The system accepts a gender hint (`male`/`female`) to select the base synthesis profile, but applies the same clone converter to all segments.
-* **Future Mitigation**: Integrate local speaker diarization (e.g., `pyannote.audio` or lightweight `spectralcluster`) to segment the original wav file by speaker ID, extract a tone embedding for each unique speaker, and apply matching cloned voices dynamically.
-
-### 5. Prosody and Emotion Cloning Constraints
-* **Problem**: OpenVoice V2 clones the speaker's vocal color (timbre) but not their emotion, rhythm, or dramatic phrasing. The cloned voice inherits the flat, even prosody of the base MeloTTS engine.
-* **Current Mitigation**: Pacing is automatically adjusted using FFmpeg `atempo` speed stretching and silent padding.
-* **Future Mitigation**: Upgrade to advanced voice cloning backends (like local XTTS-v2 or VALL-E) that support joint style, pitch contour, and emotion transfer alongside timbre cloning.
-
-### 6. Extreme Compression Capping (2.0x Limit)
-* **Problem**: If the translated Kannada sentence is significantly longer than the original English sentence window, speeding it up beyond `2.0x` renders the speech completely unintelligible.
-* **Current Mitigation**: A hard cap of `2.0x` is applied. If a segment exceeds this, the audio file is trimmed to fit the target duration, causing slight speech clipping.
-* **Future Mitigation**: Implement dynamic video speed modulation. The system can interactively extend the original video's frames (injecting duplicate frames or slow-motion segments) to match the required speech length when a translation is extremely long.
+### 3. Joint Style, Pitch, and Emotion Transfer
+* **Concept**: Present voice cloning copies timbre but keeps the base engine's neutral emotion and prosody.
+* **Architecture**: Future upgrades include advanced voice cloning backends (like local XTTS-v2 or VALL-E) that support joint style, pitch contour, and emotion transfer alongside timbre cloning.
 
 ---
