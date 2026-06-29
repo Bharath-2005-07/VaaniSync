@@ -327,3 +327,11 @@ As VaaniSync is designed for production-level local deployments, we have designe
 * **Architecture**: Future upgrades include advanced voice cloning backends (like local XTTS-v2 or VALL-E) that support joint style, pitch contour, and emotion transfer alongside timbre cloning.
 
 ---
+
+## 👤 Developer & Maintainer
+
+This project is created and maintained by:
+* **Developer**: **Bharath**
+* **GitHub Profile**: [@Bharath-2005-07](https://github.com/Bharath-2005-07)
+* **GitHub Repository**: [Bharath-2005-07/VaaniSync](https://github.com/Bharath-2005-07/VaaniSync)
+
