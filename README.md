@@ -1,4 +1,4 @@
-# 🎬 VaaniSync: Offline Multi-Agent Video Localizer & Dubber (Kannada)
+# 🎬 VaaniSync: Offline Multi-Agent Video Localizer & Dubber 
 
 [![Kaggle Capstone](https://img.shields.io/badge/Kaggle%20Capstone-AI%20Agents%20Intensive-blueviolet?style=for-the-badge)](https://www.kaggle.com)
 [![Google ADK 2.0](https://img.shields.io/badge/Orchestration-Google%20ADK%202.0-blue?style=for-the-badge)](https://github.com/google/ai-edge)
@@ -123,11 +123,11 @@ The orchestration is built using `google.adk.workflow.Workflow` in [video_locali
 
 ### 2. Smart Pacing & Dynamic Time-Stretching
 To prevent dubbed speech from running out of sync:
-* **Speed Stretching**: If the synthesized Kannada audio is longer than the original English spoken segment, VaaniSync calculates the ratio and applies FFmpeg's `atempo` filter to speed up the audio (up to 2.0x) without altering the voice pitch.
+* **Speed Stretching**: If the synthesized local language audio is longer than the original English spoken segment, VaaniSync calculates the ratio and applies FFmpeg's `atempo` filter to speed up the audio (up to 2.0x) without altering the voice pitch.
 * **Silence Padding**: If the synthesized audio is shorter than the segment window, the agent calculates the offset and appends exact milliseconds of digital silence using `pydub` to preserve alignment.
 
 ### 3. Context-Aware Batch Translation
-Instead of translating subtitles line-by-line (which ruins context), VaaniSync batches the transcription segments, passing them together to maintain sentence-level grammatical flow (Subject-Object-Verb ordering in Kannada vs Subject-Verb-Object in English).
+Instead of translating subtitles line-by-line (which ruins context), VaaniSync batches the transcription segments, passing them together to maintain sentence-level grammatical flow (Subject-Object-Verb ordering in local language[example:Kannada,Hindi,Urdu] vs Subject-Verb-Object in English).
 
 ---
 
@@ -245,7 +245,7 @@ Open **http://127.0.0.1:8001** and prompt the agent:
 
 ## 🎯 Track Evaluation Details
 
-* **Agents for Good Alignment**: Empowers local communities by translating high-quality educational and technology materials into Kannada automatically and completely offline, removing the financial gatekeeping of cloud translation fees.
+* **Agents for Good Alignment**: Empowers local communities by translating high-quality educational and technology materials into local languages automatically and completely offline, removing the financial gatekeeping of cloud translation fees.
 * **Effective Use of Agent Technologies**: Showcases advanced workflow patterns from the course including sequential graphs, state preservation via Context, retry logic, and fallback translation hooks.
 * **Communication & Documentation**: Includes interactive runtime logs, clean diagrams, and robust error-catching (e.g. failing gracefully back to original text if synthesis fails).
 
